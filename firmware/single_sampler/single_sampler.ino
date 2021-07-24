@@ -1,5 +1,6 @@
 /*
 Arduino code for running the sample collection from a chromatography process with a single collector.
+Instructions set via serial connection
 */
 
 // Include libraries
@@ -23,20 +24,29 @@ const byte motPins[] = {9, 10, 11, 12}; // Pins for stepper motor
 #define STEPS  32   // Number of steps per revolution of internal shaft of a 28byj-48 stepper
 const float angleTubes = 23.8; // angular separation between tubes in degrees
 const float angleWaste = 43.3; // angle between the center of the waste collector and the center of the first tube
-const byte nTubes = 5; // Number of tubes in the sampler - byte type limits to 255 tubes which is enough
+volatile byte nTubes = 5; // Number of tubes in the sampler - default 5, bu can be modified
 // Other variables
 byte sensorValue; // Value of the level sensor attached to the servo
 byte wasteValue = HIGH; // Value of the liquid sensor in waste collector - default HIGH = not triggered
 int numWashes = 1; //Number of washes
 
 int nSteps;  // 2048 = 1 Revolution
-byte tubeIdx = 1; // counter for tube position
 
 bool washDone; // Logical value indicating whether the wash solution has completely left the column
 unsigned long timeOff = 0; // time that the waste collector is empty
 unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
 // TO DO: Add variables given by serial port as volatile. Another version of the firmware called "stand alone" might be needed that has pre-set arguments to not use the PC
+
+// Variables for parsing serial communication
+const byte numChars = 32; // this value could be smaller or larger, as long as it fits the largest expected message
+char receivedChars[numChars];
+char tempChars[numChars];        // temporary array for use when parsing
+// variables to hold the parsed data
+char messageFromPC[numChars] = {0};
+int ledInstruction = 0;
+boolean newData = false;
+int args[4] = {0}; // arguments for executing the functions .. gotta get the actual maximum number
 
 // Define objects
 // Setup of proper sequencing for Motor Driver Pins: In1, In2, In3, In4 in the sequence 1-3-2-4
@@ -49,7 +59,7 @@ void setup(){
   // ========== Setup pins and monitor ========================================
   // Start serial monitor
   Serial.begin(9600);
-  Serial.println("Serial collection of chromatography fractions");
+  //Serial.println("Serial collection of chromatography fractions");
 
   // Define pin modes
   pinMode(tubeSensor, INPUT_PULLUP);
@@ -68,14 +78,114 @@ void setup(){
 
   // Run protocol
 
-  Serial.println("Filling tubes");
+  //Serial.println("Filling tubes");
 
-  homePlate();
-  fillTubes();
+  Serial.println("ready");
+  //homePlate();
+  //fillTubes();
 }
 
 /* Don't need no loops */
-void loop(){}
+void loop(){
+
+  // Monitor the serial port - the loop will scan the characters as they come, even if the full
+  // message doesn't arrive during a single iteration of the loop
+  recvWithStartEndMarkers();
+    if (newData == true) {
+        newData = false;
+        // This temporary copy is necessary to protect the original data
+        // because strtok() used in parseData() replaces the commas with \0
+        strcpy(tempChars, receivedChars);
+        // Parse the message: Split into its components     
+        parseCommand();
+        // Execute the data: Called the necessary function
+        executeCommand();  
+
+        
+    }
+  
+  
+}
+
+// ====================================================
+// Functions for serial communication
+
+void recvWithStartEndMarkers() {
+    static boolean recvInProgress = false;
+    static byte idx = 0;
+    char startMarker = '<';
+    char endMarker = '>';
+    char rc;
+
+    while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+            if (rc != endMarker) {
+                receivedChars[idx] = rc;
+                idx++;
+                if (idx >= numChars) { // this if clause makes sure we don't exceed the max size of message, and starts overwriting the last character
+                    idx = numChars - 1;
+                }
+            }
+            else {
+                receivedChars[idx] = '\0'; // terminate the string
+                recvInProgress = false;
+                idx = 0;
+                newData = true;
+            }
+        }
+
+        else if (rc == startMarker) {
+            recvInProgress = true;
+        }
+    }
+}
+
+//============
+
+void parseCommand() {      // split the command into its parts
+    char * strtokIndx; // this is used by strtok() as an index
+
+    strtokIndx = strtok(tempChars,",");      // get the first part
+    strcpy(messageFromPC, strtokIndx); // copy it to ledAddress as a string
+    Serial.println(messageFromPC);
+
+    // Scan the other arguments - TO DO: fix, we assume for now that all are integers and up to 4
+    for (int i = 0; i < 4; i++){
+      strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
+      args[i] = atoi(strtokIndx);     // convert this part to an integer
+      Serial.println(args[i]);
+    }
+    
+    
+}
+
+void executeCommand(){
+  // Call the required command 
+  // (pegassu firmware https://github.com/pachterlab/pegasus/blob/master/firmware/motor_serial_com/motor_serial_com.ino does something different)
+
+  // I am using aquick hcak to use the switch since it needs a char, so I am getting the first letter of the message. This works but maybe not ellegant
+  // and we'll see if all commands have different letters
+    char firstLetter = messageFromPC[0];
+    switch (firstLetter){
+    case 'H':
+      homePlate();
+      break;
+    case 'F':
+      // override number of tubes if argument was given
+      if (args[0] > 0){
+      nTubes = args[0];
+      }
+      Serial.print("Filling tubes:");
+      Serial.println(nTubes);
+      fillTubes();
+      break;
+    
+  }
+
+  
+}
 
 // ====================================================
 // Functions for running the protocol
@@ -161,6 +271,7 @@ void fillTubes(){
 
   // Local variables
   unsigned long currentMillis = millis(); 
+  byte tubeIdx = 1; // counter for tube position
   // Lift servo and move to first tube
   levelServo.write(90);
   delay(500);
