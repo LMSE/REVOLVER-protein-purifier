@@ -1,19 +1,24 @@
 /*
 Arduino code for running the sample collection from a chromatography process with a single collector.
-Instructions set via serial connection
+Instructions set via serial connection and sent to distributors
+----------------
+Slave device (i.e. Revolver)
 */
 
 // Include libraries
 #include <Stepper.h> // For driving stepper motor (28byj-48)
 #include <Servo.h>  // For driving the microservo (SG90)
-//# include <Wire.h> // For I2C communication - not needed for single device
+#include <Wire.h> // For I2C communication - not needed for single device
+
+// I2C address: Make sure each board gets a unique address and write it down on the revolver
+const byte I2CAddress = 1; // this should be an integer between 1 and 127
 
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
 const byte servoPin = 3; // Servo
 const byte wasteSensor = 4; // Liquid sensor for waste funnel
-const byte pump1 = 5; // Pump#1
-const byte pump2 = 6; // Pump #2
+const byte pump1 = 5; // Pump#1 - pumps not needed when running in multiplexed device
+const byte pump2 = 6; // Pump #2 - pumps not needed when running in multiplexed device
 const byte dockingSensor = 7; // For docking the distributor to the device - not needed for single device
 const byte homeSensor = 8; // For homing the revolving plate (hall effect sensor A3144)
 const byte motPins[] = {9, 10, 11, 12}; // Pins for stepper motor
@@ -38,15 +43,11 @@ unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
 // TO DO: Add variables given by serial port as volatile. Another version of the firmware called "stand alone" might be needed that has pre-set arguments to not use the PC
 
-// Variables for parsing serial communication
-const byte numChars = 32; // this value could be smaller or larger, as long as it fits the largest expected message
-char receivedChars[numChars];
-char tempChars[numChars];        // temporary array for use when parsing
-// variables to hold the parsed data
-char messageFromPC[numChars] = {0};
-int ledInstruction = 0;
-boolean newData = false;
-int args[4] = {0}; // arguments for executing the functions .. gotta get the actual maximum number
+// Variables for parsing I2C communication
+char messageFromMaster; // Character describing the instruction to execute
+int args[3] = {0}; // arguments for executing the functions .. gotta get the actual maximum number
+boolean taskDone = true; // variable to indicate if a given task is done. Starts as true to receive first instruction
+boolean newTask = false;
 
 // Define objects
 // Setup of proper sequencing for Motor Driver Pins: In1, In2, In3, In4 in the sequence 1-3-2-4
@@ -58,7 +59,12 @@ void setup(){
 
   // ========== Setup pins and monitor ========================================
   // Start serial monitor
-  Serial.begin(9600);
+  //Serial.begin(9600);
+  // Join I2C bus
+  Wire.begin(I2CAddress);
+  // Register events
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
   //Serial.println("Serial collection of chromatography fractions");
 
   // Define pin modes
@@ -76,85 +82,46 @@ void setup(){
   levelServo.attach(servoPin);
   levelServo.write(90);
 
-  // Run protocol
-
-  //Serial.println("Filling tubes");
-
-  //Serial.println("ready");
-  //homePlate();
-  //fillTubes();
 }
 
 /* Loop function - listen to serial monitor */
 void loop(){
 
-  // Monitor the serial port - the loop will scan the characters as they come, even if the full
-  // message doesn't arrive during a single iteration of the loop
-  recvWithStartEndMarkers();
-    if (newData == true) {
-        newData = false;
-        // This temporary copy is necessary to protect the original data
-        // because strtok() used in parseData() replaces the commas with \0
-        strcpy(tempChars, receivedChars);
-        // Parse the message: Split into its components
-        parseCommand();
-        // Execute the data: Called the necessary function
-        executeCommand();
-        // Announce to port that we are done so that next instruction can come in
-        Serial.println("done");
-    }
+  // Execute commands given by serial
+  if (newTask){
+    newTask = false;
+    executeCommand();
+    // Once task is completed
+    taskDone = true;
+  }
 }
 
 // ====================================================
-// Functions for serial communication
+// Functions for I2C
 
-void recvWithStartEndMarkers() {
-    static boolean recvInProgress = false;
-    static byte idx = 0;
-    char startMarker = '<';
-    char endMarker = '>';
-    char rc;
-
-    while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-
-        if (recvInProgress == true) {
-            if (rc != endMarker) {
-                receivedChars[idx] = rc;
-                idx++;
-                if (idx >= numChars) { // this if clause makes sure we don't exceed the max size of message, and starts overwriting the last character
-                    idx = numChars - 1;
-                }
-            }
-            else {
-                receivedChars[idx] = '\0'; // terminate the string
-                recvInProgress = false;
-                idx = 0;
-                newData = true;
-            }
-        }
-
-        else if (rc == startMarker) {
-            recvInProgress = true;
-        }
-    }
+// Once a task is done, we inform the master, who sends a new command
+void receiveEvent(int howMany){
+  // Read data in I2C bus - the master will send 4 bytes:
+  // a character with the instruction, and three ints as arguments
+  messageFromMaster = Wire.read(); // receive byte 1 as a character. When we read, we evacuate one byte
+  for (int i = 0; i < 3; i++){
+    args[i] = Wire.read();
+  }
+  // Reset task
+  taskDone = false;
+  // Indicate new task is received
+  newTask = true;
 }
 
-//============
-
-void parseCommand() {      // split the command into its parts
-    char * strtokIndx; // this is used by strtok() as an index
-
-    strtokIndx = strtok(tempChars,",");      // get the first part
-    strcpy(messageFromPC, strtokIndx); // copy it to ledAddress as a string
-    //Serial.println(messageFromPC);
-
-    // Scan the other arguments - TO DO: fix, we assume for now that all are integers and up to 4
-    for (int i = 0; i < 4; i++){
-      strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-      args[i] = atoi(strtokIndx);     // convert this part to an integer
-      //Serial.println(args[i]);
-    }
+// Executed when there is a request. For now only indicate if task is done (1) or not (0)
+// this can be extended to request pumps
+void requestEvent(){
+  if (taskDone){
+    Wire.write(1);
+  }
+  else {
+    Wire.write(0);
+  }
 }
 
 void executeCommand(){
@@ -163,7 +130,7 @@ void executeCommand(){
 
   // I am using a quick hack to use the switch since it needs a char, so I am getting the first letter of the message. This works but maybe not ellegant
   // and we'll see if all commands have different letters
-    char firstLetter = messageFromPC[0];
+    char firstLetter = messageFromMaster; // in the single version, this is messageFromPC[0]. We need to reconcile these and add them as an argument
     switch (firstLetter){
     case 'H': // Home
       homePlate();
@@ -202,21 +169,23 @@ void homePlate(){
   delay(500);
   // Rotate back a bit (approx 30 degrees) just in case we have started on top of the sensor
   plateStepper.step(-180);
-  // Start rotating plate until sensor is triggered
-  while (digitalRead(homeSensor) == HIGH){
-    plateStepper.step(2); // 2 steps at a time, could be tuned though
-  }
-  Serial.println("Hall effect triggered!");
-  // Rotate more until the sensor is no longer triggered
-  while (digitalRead(homeSensor) == LOW){
-    plateStepper.step(2);
-    posSteps = posSteps + 2;
-  }
-  Serial.println("Hall effect reset!");
-  // Now we found the positions (step indices) where the sensor is triggered.
-  // we take the half point, so we go back half the steps between the limits
-  plateStepper.step(-round(posSteps/2));
-  //Serial.println("Homed!");
+
+  plateStepper.step(1000); // for testing multiple arduino
+//  // Start rotating plate until sensor is triggered
+//  while (digitalRead(homeSensor) == HIGH){
+//    plateStepper.step(2); // 2 steps at a time, could be tuned though
+//  }
+//  Serial.println("Hall effect triggered!");
+//  // Rotate more until the sensor is no longer triggered
+//  while (digitalRead(homeSensor) == LOW){
+//    plateStepper.step(2);
+//    posSteps = posSteps + 2;
+//  }
+//  Serial.println("Hall effect reset!");
+//  // Now we found the positions (step indices) where the sensor is triggered.
+//  // we take the half point, so we go back half the steps between the limits
+//  plateStepper.step(-round(posSteps/2));
+//  //Serial.println("Homed!");
 }
 
 // Function for pumping buffers - TO DO: Get rid of delay and use a timer so that the arduino doesn't stay in standby while pumping
