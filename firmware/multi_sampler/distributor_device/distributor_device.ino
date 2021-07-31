@@ -44,7 +44,7 @@ boolean taskStored = false; // variable indicating whether the full protocol has
 byte nTask = 0; // Number of tasks received. Works as a index. Byte should allow for 255 instructions which is plenty
 byte messageFromRevolver = 0; // Temporary storage for message from revolvers
 boolean allDone; // variable that stores whether all devices are finished. We can use this to allow more instructions without reseting the devices
-
+byte requestedAddress; // variable to store an I2C address if there is a manual request (e.g. rotate a plate)
 
 
 // Define objects
@@ -93,9 +93,9 @@ void loop() {
           strcpy(tempChars, receivedChars);
           // Parse the message: Split into its components and store for I2C
           parseCommand();
-          // Execute the data: Called the necessary function
-          //executeCommand();
-          Serial.println(receivedChars);
+          // Execute the data: Called the necessary function - USE this for now to pass instructions independently to each revolver
+          // for rotating
+          executeCommand();
           // Announce to port that we are done so that next instruction can come in
           //Serial.println("done");
       }
@@ -120,10 +120,6 @@ void loop() {
 
       // Parse message - TODO:Complete cases and maybe wrap in function called parseI2C
       if (messageFromRevolver == 1 && taskIdx[idx] < nTask){
-        //Serial.print("Assigning task to device ");
-        //Serial.println(idx);
-        //Serial.print("Executing ");
-        //Serial.println(taskName[taskIdx[idx]]);
         // Task is finished, so move on to next task for this revolver (as long as there is another task)
         // by default all revolvers start as "done" and wait for the first instruction,
         // which is why we update the index after passing the instruction
@@ -211,6 +207,10 @@ void parseCommand() {      // split the command into its parts
       taskName[nTask] = messageFromPC[0];
 
       if (messageFromPC[0] == 'R'){
+
+        // This task accepts a fourth argument that is an I2C address, and it's not executed as part of the protocol
+        // since it's used for manual rotation (this could be changed with another argument)
+        
         // If the task is to rotate, we need to handle it a bit better becase
         // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
         // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255) 
@@ -218,21 +218,24 @@ void parseCommand() {      // split the command into its parts
         // rotate 255 steps, plus a bit more
         strtokIndx = strtok(NULL, ",");
         unsigned int nSteps = atoi(strtokIndx);
-        
         taskArgs[nTask][0] = nSteps % 255;
         taskArgs[nTask][2] = nSteps/255;
-        
+        // Get direction
         strtokIndx = strtok(NULL, ",");
         taskArgs[nTask][1] = atoi(strtokIndx);
+        // Get I2C device to address
+        strtokIndx = strtok(NULL, ",");
+        requestedAddress = atoi(strtokIndx);
       }
       else {
         for (int i = 0; i < nArgs; i++){
           strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
           taskArgs[nTask][i] = atoi(strtokIndx);     // convert this part to an integer
         }
+        // Increase task counter
+        nTask++;
       }
-      // Increase task counter
-      nTask++;
+      
     }
     else {
       taskStored = true;
@@ -241,7 +244,18 @@ void parseCommand() {      // split the command into its parts
 }
 
 void executeCommand(){
-  // Empty for master device
+  if (messageFromPC[0] == 'R'){
+    Wire.beginTransmission(requestedAddress);
+    // Write the name of the command to be executed
+    Wire.write('R');
+        // Write the arguments
+        for (int i = 0; i < nArgs; i++){
+          Wire.write(taskArgs[nTask][i]);
+        }
+        // End transmission
+        Wire.endTransmission();
+    
+  }
 }
 
 // ====================================================
