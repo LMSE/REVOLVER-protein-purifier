@@ -209,9 +209,27 @@ void parseCommand() {      // split the command into its parts
     if (messageFromPC[0] != 'X'){
       // Scan and store the other arguments - Assuming all are integers
       taskName[nTask] = messageFromPC[0];
-      for (int i = 0; i < nArgs; i++){
-        strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-        taskArgs[nTask][i] = atoi(strtokIndx);     // convert this part to an integer
+
+      if (messageFromPC[0] == 'R'){
+        // If the task is to rotate, we need to handle it a bit better becase
+        // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
+        // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255) 
+        // and as a third argument we pass the whole part of n/255. That way we tell the slaves how many time to
+        // rotate 255 steps, plus a bit more
+        strtokIndx = strtok(NULL, ",");
+        unsigned int nSteps = atoi(strtokIndx);
+        
+        taskArgs[nTask][0] = nSteps % 255;
+        taskArgs[nTask][2] = nSteps/255;
+        
+        strtokIndx = strtok(NULL, ",");
+        taskArgs[nTask][1] = atoi(strtokIndx);
+      }
+      else {
+        for (int i = 0; i < nArgs; i++){
+          strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
+          taskArgs[nTask][i] = atoi(strtokIndx);     // convert this part to an integer
+        }
       }
       // Increase task counter
       nTask++;

@@ -301,10 +301,10 @@ void fillTubes(){
 }
 
 void rotatePlate(){
-  // Use the args array, with args[0] being taken as the number of steps, and args[1] as the direction.
-  // args[1] must be either 0 or 1.
+  // Use the args array. args[1] is the direction (either 0 or 1). The number of steps is encoded
+  // as a multiple of 255 (arg[2]) plus the remainder (arg[0]) to able to pass a large number of steps 
+  // as bytes
   int dir = args[1]*2 - 1; // this converts it to -1 or 1
-  args[0] = 1000;
-  plateStepper.step(dir*args[0]);
-  //plateStepper.step(2000);
+  int n = args[0] + 255*args[2];
+  plateStepper.step(dir*n);
 }
