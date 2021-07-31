@@ -46,7 +46,8 @@ char tempChars[numChars];        // temporary array for use when parsing
 char messageFromPC[numChars] = {0};
 int ledInstruction = 0;
 boolean newData = false;
-int args[4] = {0}; // arguments for executing the functions .. gotta get the actual maximum number
+const byte nArgs = 3; // Maximum number of arguments to be used in functions
+unsigned int args[nArgs]; // arguments for executing the functions. Declared as unsigned to be able to store larger numbers if needed
 
 // Define objects
 // Setup of proper sequencing for Motor Driver Pins: In1, In2, In3, In4 in the sequence 1-3-2-4
@@ -70,7 +71,7 @@ void setup(){
   pinMode(homeSensor, INPUT_PULLUP);
 
   // Turn off motor coils
-  for (int i; i<4; i++){ digitalWrite(motPins[i], LOW);}
+  for (int i = 0; i < 4; i++){ digitalWrite(motPins[i], LOW);}
   plateStepper.setSpeed(700);
   // Attach servo and raise for homing
   levelServo.attach(servoPin);
@@ -149,8 +150,8 @@ void parseCommand() {      // split the command into its parts
     strcpy(messageFromPC, strtokIndx); // copy it to ledAddress as a string
     //Serial.println(messageFromPC);
 
-    // Scan the other arguments - TO DO: fix, we assume for now that all are integers and up to 4
-    for (int i = 0; i < 4; i++){
+    // Scan the other arguments - all assumed to be integers
+    for (int i = 0; i < nArgs; i++){
       strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
       args[i] = atoi(strtokIndx);     // convert this part to an integer
       //Serial.println(args[i]);
@@ -184,6 +185,9 @@ void executeCommand(){
       collectWaste(); // No arguments, but could take an optional argument from args that is the wait time
       break;
       // TO DO - add a case for "settings" where we modify waiting times and things like that
+    case 'R': // Rotate manually
+      rotatePlate();
+      break;
   }
 
 
@@ -321,4 +325,13 @@ void fillTubes(){
   // Move to zero position
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
   plateStepper.step(nSteps);
+}
+
+// Additional function: Rotate plate manually for manual homing if needed
+
+void rotatePlate(){
+  // Use the args array, with args[0] being taken as the number of steps, and args[1] as the direction.
+  // args[1] must be either 0 or 1.
+  int dir = args[1]*2 - 1; // this converts it to -1 or 1
+  plateStepper.step(dir*args[0]);
 }

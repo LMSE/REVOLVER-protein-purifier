@@ -11,7 +11,7 @@ Slave device (i.e. Revolver)
 #include <Wire.h> // For I2C communication - not needed for single device
 
 // I2C address: Make sure each board gets a unique address and write it down on the revolver
-const byte I2CAddress = 1; // this should be an integer between 1 and 127
+const byte I2CAddress = 2; // this should be an integer between 1 and 127
 
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
@@ -45,7 +45,8 @@ const unsigned long timeEmpty = 20000; // time in milliseconds the waste contain
 
 // Variables for parsing I2C communication
 char messageFromMaster; // Character describing the instruction to execute
-int args[3] = {0}; // arguments for executing the functions .. gotta get the actual maximum number
+const byte nArgs = 3; // Maximum number of arguments to be used in functions
+unsigned int args[nArgs]; // arguments for executing the functions. Declared as unsigned to be able to store larger numbers if needed
 boolean taskDone = true; // variable to indicate if a given task is done. Starts as true to receive first instruction
 boolean newTask = false;
 
@@ -74,6 +75,8 @@ void setup(){
   pinMode(pump2, OUTPUT);
   pinMode(dockingSensor, INPUT_PULLUP);
   pinMode(homeSensor, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 
   // Turn off motor coils
   for (int i; i<4; i++){ digitalWrite(motPins[i], LOW);}
@@ -84,15 +87,17 @@ void setup(){
 
 }
 
-/* Loop function - listen to serial monitor */
+/* Loop function - listen to I2C bus */
 void loop(){
 
-  // Execute commands given by serial
+  // Execute commands given by serial to the master and sent via I2C to revolver
   if (newTask){
+    digitalWrite(LED_BUILTIN, HIGH);
     newTask = false;
     executeCommand();
     // Once task is completed
     taskDone = true;
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -104,7 +109,7 @@ void receiveEvent(int howMany){
   // Read data in I2C bus - the master will send 4 bytes:
   // a character with the instruction, and three ints as arguments
   messageFromMaster = Wire.read(); // receive byte 1 as a character. When we read, we evacuate one byte
-  for (int i = 0; i < 3; i++){
+  for (int i = 0; i < nArgs; i++){
     args[i] = Wire.read();
   }
   // Reset task
@@ -151,6 +156,9 @@ void executeCommand(){
       collectWaste(); // No arguments, but could take an optional argument from args that is the wait time
       break;
       // TO DO - add a case for "settings" where we modify waiting times and things like that
+    case 'R': // Rotate manually
+      rotatePlate();
+      break;
   }
 
 
@@ -290,4 +298,13 @@ void fillTubes(){
   // Move to zero position
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
   plateStepper.step(nSteps);
+}
+
+void rotatePlate(){
+  // Use the args array, with args[0] being taken as the number of steps, and args[1] as the direction.
+  // args[1] must be either 0 or 1.
+  int dir = args[1]*2 - 1; // this converts it to -1 or 1
+  args[0] = 1000;
+  plateStepper.step(dir*args[0]);
+  //plateStepper.step(2000);
 }

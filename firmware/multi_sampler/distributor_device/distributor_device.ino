@@ -33,12 +33,13 @@ byte error, address; // Variables for I2C scanner
 int nI2C; // number of connected devices via I2C
 const byte nI2CMax = 10; // Maximum number of I2C devices we will allow to be connected
 const byte nTaskMax = 20; // Maximum number of tasks to be stored - TODO: This could be tuned
+const byte nArgs = 3; // Maximum number of arguments to be used in functions
 byte listI2C[nI2CMax]; // array that holds the addresses of the I2C devices connected to the bus
 int locationsI2C[nI2CMax]; // array that contains the locations (in n steps) of the connected I2C devices - TO DO merge into a single 2D array
 int angularPos = 0; // angular position of the motor when we start...arbitrary location
 byte taskIdx[nI2CMax]; // array for storing the task being currently executed by each revolver
 char taskName[nTaskMax]; // array for storing the tasks to be executed by each revolver (e.g. "H", "P", "F")
-unsigned int taskArgs[nTaskMax][3]; // array for storing arguments (up to three) for each of the tasks
+unsigned int taskArgs[nTaskMax][nArgs]; // array for storing arguments (up to three) for each of the tasks
 boolean taskStored = false; // variable indicating whether the full protocol has been parsed and stored
 byte nTask = 0; // Number of tasks received. Works as a index. Byte should allow for 255 instructions which is plenty
 byte messageFromRevolver = 0; // Temporary storage for message from revolvers
@@ -65,7 +66,7 @@ void setup() {
   pinMode(pump2, OUTPUT);
 
   // Turn off motor coils
-  for (int i; i<4; i++){ digitalWrite(motPins[i], LOW);}
+  for (int i; i < 4; i++){digitalWrite(motPins[i], LOW);}
   mainStepper.setSpeed(700);
 
   // Step 1: Only execute once - find number and addresses of connected I2C devices
@@ -94,7 +95,7 @@ void loop() {
           parseCommand();
           // Execute the data: Called the necessary function
           //executeCommand();
-          //Serial.println(messageFromPC);
+          Serial.println(receivedChars);
           // Announce to port that we are done so that next instruction can come in
           //Serial.println("done");
       }
@@ -108,21 +109,21 @@ void loop() {
     allDone = true;
     // Loop through all revolvers, read their status and pass instructions if needed
     for (int idx = 0; idx < nI2C; idx++){
-      delay(3000); // temporary delay for debugging
-      // Check if all devices have finished
-      allDone = allDone && (taskIdx[idx] == nTask);
+      //delay(3000); // temporary delay for debugging - it seems that if we call I2C while the stepper is running, it interrupts
       // Request status update of revolver
       Wire.requestFrom(listI2C[idx], 1); // request 1 byte
       // Read message - for now we only indicate whether the step is done, but
       // this message can be a request for a pump
       messageFromRevolver = Wire.read();
+      // Check if all devices have finished (by checking if each device has finished and is currently free)
+      allDone = allDone && (taskIdx[idx] == nTask && messageFromRevolver == 1);
 
       // Parse message - TODO:Complete cases and maybe wrap in function called parseI2C
       if (messageFromRevolver == 1 && taskIdx[idx] < nTask){
-        Serial.print("Assigning task to device ");
-        Serial.println(idx);
-        Serial.print("Executing ");
-        Serial.println(taskName[taskIdx[idx]]);
+        //Serial.print("Assigning task to device ");
+        //Serial.println(idx);
+        //Serial.print("Executing ");
+        //Serial.println(taskName[taskIdx[idx]]);
         // Task is finished, so move on to next task for this revolver (as long as there is another task)
         // by default all revolvers start as "done" and wait for the first instruction,
         // which is why we update the index after passing the instruction
@@ -130,7 +131,7 @@ void loop() {
         // Write the name of the command to be executed
         Wire.write(taskName[taskIdx[idx]]);
         // Write the arguments
-        for (int i = 0; i < 3; i++){ // change 3 to max args
+        for (int i = 0; i < nArgs; i++){
           Wire.write(taskArgs[taskIdx[idx]][i]);
         }
         // End transmission
@@ -206,12 +207,11 @@ void parseCommand() {      // split the command into its parts
     // stop listening to serial (the stop instruction is <X>)
 
     if (messageFromPC[0] != 'X'){
-      // Scan and store the other arguments - TO DO: fix, we assume for now that all are integers and up to 4
+      // Scan and store the other arguments - Assuming all are integers
       taskName[nTask] = messageFromPC[0];
-      for (int i = 0; i < 3; i++){
+      for (int i = 0; i < nArgs; i++){
         strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
         taskArgs[nTask][i] = atoi(strtokIndx);     // convert this part to an integer
-        //Serial.println(args[i]);
       }
       // Increase task counter
       nTask++;
