@@ -1,2 +1,1 @@
-# chromatography_fraction_collector
- 
+# REVOLVER: An automated protein purification system
