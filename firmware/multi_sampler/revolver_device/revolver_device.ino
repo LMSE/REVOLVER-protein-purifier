@@ -178,22 +178,22 @@ void homePlate(){
   // Rotate back a bit (approx 30 degrees) just in case we have started on top of the sensor
   plateStepper.step(-180);
 
-  plateStepper.step(1000); // for testing multiple arduino
-//  // Start rotating plate until sensor is triggered
-//  while (digitalRead(homeSensor) == HIGH){
-//    plateStepper.step(2); // 2 steps at a time, could be tuned though
-//  }
-//  Serial.println("Hall effect triggered!");
-//  // Rotate more until the sensor is no longer triggered
-//  while (digitalRead(homeSensor) == LOW){
-//    plateStepper.step(2);
-//    posSteps = posSteps + 2;
-//  }
-//  Serial.println("Hall effect reset!");
-//  // Now we found the positions (step indices) where the sensor is triggered.
-//  // we take the half point, so we go back half the steps between the limits
-//  plateStepper.step(-round(posSteps/2));
-//  //Serial.println("Homed!");
+  //plateStepper.step(1000); // for testing multiple arduino
+  // Start rotating plate until sensor is triggered
+  while (digitalRead(homeSensor) == HIGH){
+    plateStepper.step(2); // 2 steps at a time, could be tuned though
+  }
+  Serial.println("Hall effect triggered!");
+  // Rotate more until the sensor is no longer triggered
+  while (digitalRead(homeSensor) == LOW){
+    plateStepper.step(2);
+    posSteps = posSteps + 2;
+  }
+  Serial.println("Hall effect reset!");
+  // Now we found the positions (step indices) where the sensor is triggered.
+  // we take the half point, so we go back half the steps between the limits
+  plateStepper.step(-round(posSteps/2));
+  //Serial.println("Homed!");
 }
 
 // Function for pumping buffers - TO DO: Get rid of delay and use a timer so that the arduino doesn't stay in standby while pumping
