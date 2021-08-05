@@ -12,8 +12,8 @@ Instructions set via serial connection
 const byte tubeSensor = 2; // Level sensor in eppi tubes
 const byte servoPin = 3; // Servo
 const byte wasteSensor = 4; // Liquid sensor for waste funnel
-const byte pump1 = 5; // Pump#1
-const byte pump2 = 6; // Pump #2
+const byte pump1 = 6; // Pump#1
+const byte pump2 = 5; // Pump #2
 const byte dockingSensor = 7; // For docking the distributor to the device - not needed for single device
 const byte homeSensor = 8; // For homing the revolving plate (hall effect sensor A3144)
 const byte motPins[] = {9, 10, 11, 12}; // Pins for stepper motor
@@ -69,7 +69,7 @@ void setup(){
   pinMode(pump2, OUTPUT);
   pinMode(dockingSensor, INPUT_PULLUP);
   pinMode(homeSensor, INPUT_PULLUP);
-
+  pinMode(LED_BUILTIN, OUTPUT);
   // Turn off motor coils
   for (int i = 0; i < 4; i++){ digitalWrite(motPins[i], LOW);}
   plateStepper.setSpeed(700);
@@ -104,6 +104,10 @@ void loop(){
         // Announce to port that we are done so that next instruction can come in
         Serial.println("done");
     }
+
+    // For debugging sensor
+    if(digitalRead(homeSensor) == LOW){digitalWrite(LED_BUILTIN, HIGH);}
+    else{digitalWrite(LED_BUILTIN, LOW);}
 }
 
 // ====================================================
@@ -209,7 +213,16 @@ void homePlate(){
   // Start rotating plate until sensor is triggered
   while (digitalRead(homeSensor) == HIGH){
     plateStepper.step(2); // 2 steps at a time, could be tuned though
+    posSteps = posSteps + 2; // update position
+    // If we go around once without finding the sensor, we stop and throw a notification
+    // this prevents infinite loops if the sensor is not installed
+    if (posSteps > 2100){
+      Serial.println("Sensor not found...stopping");
+      return;
+    }
   }
+  // Reset step counter
+  posSteps = 0;
   Serial.println("Hall effect triggered!");
   // Rotate more until the sensor is no longer triggered
   while (digitalRead(homeSensor) == LOW){

@@ -11,8 +11,8 @@ Master device
 #include <Stepper.h>
 
 // Define pins - distributor only has a stepper motor and pumps
-const byte pump1 = 5; // Pump#1
-const byte pump2 = 6; // Pump #2
+const byte pump1 = 6; // Pump#1
+const byte pump2 = 5; // Pump #2
 const byte motPins[] = {9, 10, 11, 12}; // Pins for stepper motor
 
 /* Constant properties of the hardware */
@@ -151,7 +151,7 @@ void loop() {
     }
 
   }
-  
+
 
 } // end of loop
 
@@ -210,10 +210,10 @@ void parseCommand() {      // split the command into its parts
 
         // This task accepts a fourth argument that is an I2C address, and it's not executed as part of the protocol
         // since it's used for manual rotation (this could be changed with another argument)
-        
+
         // If the task is to rotate, we need to handle it a bit better becase
         // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
-        // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255) 
+        // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255)
         // and as a third argument we pass the whole part of n/255. That way we tell the slaves how many time to
         // rotate 255 steps, plus a bit more
         strtokIndx = strtok(NULL, ",");
@@ -235,7 +235,7 @@ void parseCommand() {      // split the command into its parts
         // Increase task counter
         nTask++;
       }
-      
+
     }
     else {
       taskStored = true;
@@ -254,7 +254,7 @@ void executeCommand(){
         }
         // End transmission
         Wire.endTransmission();
-    
+
   }
 }
 
