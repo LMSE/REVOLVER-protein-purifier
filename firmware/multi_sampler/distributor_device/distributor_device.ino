@@ -206,16 +206,15 @@ void parseCommand() {      // split the command into its parts
       // Scan and store the other arguments - Assuming all are integers
       taskName[nTask] = messageFromPC[0];
 
+      // If the task is to rotate, we need to handle it a bit better becase
+      // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
+      // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255)
+      // and as a third argument we pass the whole part of n/255. That way we tell the slaves how many time to
+      // rotate 255 steps, plus a bit more
       if (messageFromPC[0] == 'R'){
-
         // This task accepts a fourth argument that is an I2C address, and it's not executed as part of the protocol
         // since it's used for manual rotation (this could be changed with another argument)
 
-        // If the task is to rotate, we need to handle it a bit better becase
-        // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
-        // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255)
-        // and as a third argument we pass the whole part of n/255. That way we tell the slaves how many time to
-        // rotate 255 steps, plus a bit more
         strtokIndx = strtok(NULL, ",");
         unsigned int nSteps = atoi(strtokIndx);
         taskArgs[nTask][0] = nSteps % 255;
@@ -243,18 +242,68 @@ void parseCommand() {      // split the command into its parts
     }
 }
 
-void executeCommand(){
-  if (messageFromPC[0] == 'R'){
-    Wire.beginTransmission(requestedAddress);
-    // Write the name of the command to be executed
-    Wire.write('R');
+// Function for executing commands. Note: We only include commands directly executed
+// by the distributor, since everything else is passed via I2C
+
+void executeCommand(){ // TO DO - clean execute function and parse commands
+  char firstLetter = messageFromPC[0];
+  switch (firstLetter){
+    case 'R': // Rotate manually
+      if (requestedAddress == 0){ 
+        // Rotate distributor with the arguments parsed - convert back to total steps as done 
+        // by the distributors
+        rotatePlate(taskArgs[nTask][0] + 255*taskArgs[nTask][2], taskArgs[nTask][1]);
+      }
+      else {
+        // Pass arguments to slave via I2C
+        Wire.beginTransmission(requestedAddress);
+        // Write the name of the command to be executed
+        Wire.write('R');
         // Write the arguments
         for (int i = 0; i < nArgs; i++){
           Wire.write(taskArgs[nTask][i]);
         }
         // End transmission
         Wire.endTransmission();
+      }
+      break;
+    case 'S': // Store location of I2C device
+      // THIS CHUNK NEEDS WORK to store the angularPos variable in the locationsI2C array
+      Serial.print("Location: ");
+      Serial.println(angularPos);
+      locationsI2C[0] = angularPos; // TO DO: Store the location for the corresponding device
+      break;
+    case 'V': // Visit a device - TO DO: Make function for this
+      // The distributor should call it itself before a pump function
+      // it should take as arguments an I2C address for which a location has been stored
+      // We might take the longest path, but we want the distriutor to never complete more than a full rotation
 
+      // If both the current position and the stored position are in the same half of the rotation, we rotate normally. 
+      // Else, we rotate the other direction to avoid getting tangled in the center
+      // TO DO create a local variable called targetPos for readability
+      int targetPos = locationsI2C[0];
+
+      
+      // Check if both start and end position are on the same half of the rotation
+      if ((targetPos>steps2take/2 && angularPos>steps2take/2) || (targetPos<steps2take/2 && angularPos<steps2take/2)){
+        // Starting and end position in the same half of the rotation
+        mainStepper.step(targetPos - angularPos);
+      }
+      else{
+        // Go all the way around to not cross the mid point (to avoid tangles)
+        // Direction will depend on position of start and end point
+        if (angularPos > targetPos){
+          // Go counter clockwise
+          mainStepper.step(targetPos - angularPos + steps2take);
+        }
+        else {
+          // Go clockwise
+          mainStepper.step(targetPos - angularPos - steps2take);
+        }
+      }
+      // Update position
+      angularPos = targetPos;
+      break;
   }
 }
 
@@ -357,6 +406,19 @@ void locateI2C(){
 // ==============================================
 // Functions for running the protocol
 
+void rotatePlate(int steps, int dir){ // mainStepper has a different name from plateStepper in the revolver. Unify functions?
+  // d must be either 0 or 1.
+  dir = dir*2 - 1; // this converts it to -1 or 1
+  mainStepper.step(dir*steps);
+  // Update position - calculate the mod to make sure abs(position) < steps2take
+  angularPos = angularPos + dir*steps;
+  angularPos = angularPos % steps2take;
+  // If position is negative, add steps2take to make it positive
+  if (angularPos < 0 ){
+    angularPos = angularPos + steps2take;
+  }
+  Serial.println(angularPos);
+}
 
 // // Loop through the connected I2C devices and visit them
 // for (int idx = 0; idx < nI2C; idx++){
