@@ -60,7 +60,7 @@ void setup(){
   // ========== Setup pins and monitor ========================================
   // Start serial monitor
   Serial.begin(9600);
-  //Serial.println("Serial collection of chromatography fractions");
+  Serial.println("REVOLVER: Serial collection of chromatography fractions");
 
   // Define pin modes
   pinMode(tubeSensor, INPUT_PULLUP);
@@ -71,19 +71,11 @@ void setup(){
   pinMode(homeSensor, INPUT_PULLUP);
   pinMode(LED_BUILTIN, OUTPUT);
   // Turn off motor coils
-  for (int i = 0; i < 4; i++){ digitalWrite(motPins[i], LOW);}
+  for (int i = 0; i < 4; i++){digitalWrite(motPins[i], LOW);}
   plateStepper.setSpeed(700);
   // Attach servo and raise for homing
   levelServo.attach(servoPin);
   levelServo.write(90);
-
-  // Run protocol
-
-  //Serial.println("Filling tubes");
-
-  //Serial.println("ready");
-  //homePlate();
-  //fillTubes();
 }
 
 /* Loop function - listen to serial monitor */
@@ -102,47 +94,47 @@ void loop(){
         // Execute the data: Called the necessary function
         executeCommand();
         // Announce to port that we are done so that next instruction can come in
-        Serial.println("done");
+        //Serial.println("Task done"); Only needed for GUI to have a standard message
     }
 
-    // For debugging sensor
-    if(digitalRead(homeSensor) == LOW){digitalWrite(LED_BUILTIN, HIGH);}
-    else{digitalWrite(LED_BUILTIN, LOW);}
+    // For debugging homing sensor
+    //if(digitalRead(homeSensor) == LOW){digitalWrite(LED_BUILTIN, HIGH);}
+    //else{digitalWrite(LED_BUILTIN, LOW);}
 }
 
 // ====================================================
 // Functions for serial communication
 
 void recvWithStartEndMarkers() {
-    static boolean recvInProgress = false;
-    static byte idx = 0;
-    char startMarker = '<';
-    char endMarker = '>';
-    char rc;
+  static boolean recvInProgress = false;
+  static byte idx = 0;
+  char startMarker = '<';
+  char endMarker = '>';
+  char rc;
 
-    while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
+  while (Serial.available() > 0 && newData == false) {
+    rc = Serial.read();
 
-        if (recvInProgress == true) {
-            if (rc != endMarker) {
-                receivedChars[idx] = rc;
-                idx++;
-                if (idx >= numChars) { // this if clause makes sure we don't exceed the max size of message, and starts overwriting the last character
-                    idx = numChars - 1;
-                }
-            }
-            else {
-                receivedChars[idx] = '\0'; // terminate the string
-                recvInProgress = false;
-                idx = 0;
-                newData = true;
-            }
-        }
-
-        else if (rc == startMarker) {
-            recvInProgress = true;
-        }
+    if (recvInProgress == true) {
+      if (rc != endMarker) {
+        receivedChars[idx] = rc;
+        idx++;
+        if (idx >= numChars) { // this if clause makes sure we don't exceed the max size of message, and starts overwriting the last character
+        idx = numChars - 1;
+      }
     }
+    else {
+      receivedChars[idx] = '\0'; // terminate the string
+      recvInProgress = false;
+      idx = 0;
+      newData = true;
+    }
+  }
+
+    else if (rc == startMarker) {
+      recvInProgress = true;
+    }
+  }
 }
 
 //============
@@ -164,37 +156,31 @@ void parseCommand() {      // split the command into its parts
 
 void executeCommand(){
   // Call the required command
-  // (pegassu firmware https://github.com/pachterlab/pegasus/blob/master/firmware/motor_serial_com/motor_serial_com.ino does something different)
-
-  // I am using a quick hack to use the switch since it needs a char, so I am getting the first letter of the message. This works but maybe not ellegant
-  // and we'll see if all commands have different letters
-    char firstLetter = messageFromPC[0];
-    switch (firstLetter){
-    case 'H': // Home
+  // All commands have a different letter so we only
+  // need their first character to identify them
+  char firstLetter = messageFromPC[0];
+  switch (firstLetter){
+    case 'H': // Auto home
       homePlate();
       break;
     case 'F': // Fill tubes
       // override number of tubes if argument was given
       if (args[0] > 0){
-      nTubes = args[0];
+        nTubes = args[0];
       }
-      //Serial.print("Filling tubes:");
-      //Serial.println(nTubes);
       fillTubes();
       break;
     case 'P': // Pump
-      pumpSolution(args[1], args[0]); // args 1 is the pump time in milliseconds, args 0 is the pump ID
+      pumpSolution(args[0], args[1]); // args 1 is the pump time in milliseconds, args 0 is the pump ID
       break;
     case 'C': // Collect waste
       collectWaste(); // No arguments, but could take an optional argument from args that is the wait time
       break;
-      // TO DO - add a case for "settings" where we modify waiting times and things like that
     case 'R': // Rotate manually
       rotatePlate();
       break;
+    // OPTIONAL TO DO - add a case for "settings" where we modify waiting times and things like that
   }
-
-
 }
 
 // ====================================================
@@ -202,7 +188,7 @@ void executeCommand(){
 
 // Home the plate
 void homePlate(){
-  //Serial.println("Homing...");
+  Serial.println("Homing REVOLVER...");
   // Step counter for finding homing position
   int posSteps = 0;
   // Lift servo
@@ -223,41 +209,59 @@ void homePlate(){
   }
   // Reset step counter
   posSteps = 0;
-  Serial.println("Hall effect triggered!");
+  Serial.print("Sensor triggered!...");
   // Rotate more until the sensor is no longer triggered
   while (digitalRead(homeSensor) == LOW){
     plateStepper.step(2);
     posSteps = posSteps + 2;
   }
-  Serial.println("Hall effect reset!");
+  Serial.print("Sensor reset!...");
   // Now we found the positions (step indices) where the sensor is triggered.
   // we take the half point, so we go back half the steps between the limits
   plateStepper.step(-round(posSteps/2));
-  //Serial.println("Homed!");
+  Serial.println("Homed!");
 }
 
-// Function for pumping buffers - TO DO: Get rid of delay and use a timer so that the arduino doesn't stay in standby while pumping
-// Change so that the input is milliseconds and it's calculated by R based on the callibration
-void pumpSolution(float pumpTime, int pumpID){
+// Function for pumping buffers
+void pumpSolution(float pumpVolume, int pumpID){
+  // Calculate the pumping time based on the callibration curve
+  // TO DO - This variable needs to be set somehow without reflashing - I still
+  // prefer using milliseconds
+  float pumpTime;
+  // For our pumps, there is a small delay for the
+  // pump to accelerate that is noticeable if the
+  // requested volume is smaller than 1 mL
+  if (pumpVolume <= 1){
+    pumpTime = pumpVolume*(100/1.1);
+  }
+  else {
+    pumpTime = pumpVolume*(100/1.1)*1.13;
+  }
+  // Turn on the required pump
   if (pumpID == 1){
     digitalWrite(pump1, HIGH);
-    delay(pumpTime*1000);
-    digitalWrite(pump1, LOW);
+    Serial.print("Pumping buffer #1...");
   }
   else if (pumpID == 2){
     digitalWrite(pump2, HIGH);
-    delay(pumpTime*1000);
-    digitalWrite(pump2, LOW);
+    Serial.print("Pumping buffer #2...");
   }
+  // Delay
+  delay(pumpTime);
+  // Turn off pumps
+  digitalWrite(pump1, LOW);
+  digitalWrite(pump2, LOW);
+  Serial.println("Done!")
 }
 
+// Function for collecting waste after washes
 void collectWaste(){
   int washDone = false;
-  Serial.println("Washing has begun.");
+  Serial.print("Washing has begun...");
   // Wait until the sensor is triggered the first time before we start counting
   while (wasteValue == HIGH){
     wasteValue = digitalRead(wasteSensor);
-    Serial.println("Waiting for first drop");
+    Serial.print("Waiting for first drop...");
     delay(10);
   }
   Serial.println("First drop detected...waiting");
@@ -281,14 +285,13 @@ void collectWaste(){
     washDone = (timeOff >= timeEmpty);
     delay(10);
   }
-  //Serial.println("Wash done!");
+  Serial.println("Wash done!");
   delay(2000);
 }
 
-// Fill tubes ( collect fractions)
+// Fill tubes (collect fractions)
 void fillTubes(){
-  //Serial.println("Filling tubes");
-
+  Serial.println("Filling tubes");
   // Local variables
   unsigned long currentMillis = millis();
   byte tubeIdx = 1; // counter for tube position
@@ -301,7 +304,6 @@ void fillTubes(){
   // Lower servo and add elution buffer to column
   levelServo.write(0);
   delay(500);
-  pumpSolution(0.24, 1); // Use pump #1
 
   // Fill all tubes - wait until each tube is filled before moving to the next one
   nSteps = round(2048*angleTubes/360); // convert angle to steps, knowing that a rotation is 2048 steps
@@ -326,22 +328,22 @@ void fillTubes(){
         // Lower servo for next tube
         levelServo.write(0); // 90 degrees turn
         delay(500);
-        pumpSolution(0.24, 1); // Use pump #1
-
       }
     }
   }
   Serial.println("Waiting for the last drops...");
-  delay(10000);
+  delay(500);
   Serial.println("Done filling!");
 
   // Move to zero position
+  // TO DO - maybe make this an option. If we want to add
+  // buffer between collections, we need to NOT reset the plate
+  // and only do the movement from waste to tube 1 ONCE (when tube idx == 0)
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
   plateStepper.step(nSteps);
 }
 
 // Additional function: Rotate plate manually for manual homing if needed
-
 void rotatePlate(){
   // Use the args array, with args[0] being taken as the number of steps, and args[1] as the direction.
   // args[1] must be either 0 or 1.
