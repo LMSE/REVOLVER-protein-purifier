@@ -114,7 +114,7 @@ void loop() {
       //delay(3000); // temporary delay for debugging - it seems that if we call I2C while the stepper is running, it interrupts
       // Request status update of revolver
       Wire.requestFrom(listI2C[idx], 1); // request 1 byte
-      // Read message - ask the REVOLVER if it's idle (1) or budy (0)
+      // Read message - ask the REVOLVER if it's idle (1) or busy (0)
       messageFromRevolver = Wire.read();
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free)
@@ -139,18 +139,33 @@ void loop() {
           pumpSolution(taskArgs[taskIdx[idx]][0], taskArgs[taskIdx[idx]][1]);
           delay(1000);
         }
-
-        Wire.beginTransmission(listI2C[idx]);
-        // Write the name of the command to be executed
-        Wire.write(taskName[taskIdx[idx]]);
-        // Write the arguments
-        for (int i = 0; i < nArgs; i++){
-          Wire.write(taskArgs[taskIdx[idx]][i]);
+        else {
+          Wire.beginTransmission(listI2C[idx]);
+          // Write the name of the command to be executed
+          Wire.write(taskName[taskIdx[idx]]);
+          // Write the arguments
+          for (int i = 0; i < nArgs; i++){
+            Wire.write(taskArgs[taskIdx[idx]][i]);
+          }
+          // End transmission
+          Wire.endTransmission();
+          // Display stuff
+          Serial.print("Requesting task ");
+          Serial.print(taskName[taskIdx[idx]]);
+          Serial.print(" from device #");
+          Serial.print(listI2C[idx]);
+          Serial.println("...");
         }
-        // End transmission
-        Wire.endTransmission();
         // Update task idx for next iteration
         taskIdx[idx]++;
+
+        // If we finished the final task, display something
+        if (taskIdx[idx] == nTask){
+          Serial.print("REVOLVER #");
+          Serial.print(listI2C[idx]);
+          Serial.println(" finished!");
+        }
+        
       }
 
     }
