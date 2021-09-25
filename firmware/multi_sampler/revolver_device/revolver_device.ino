@@ -219,9 +219,6 @@ void collectWaste(){
 
 // Fill tubes (collect fractions)
 void fillTubes(){
-  // Local variables
-  unsigned long currentMillis = millis();
-  byte tubeIdx = 1; // counter for tube position
   // Lift servo and move to first tube
   levelServo.write(90);
   delay(500);
@@ -231,6 +228,9 @@ void fillTubes(){
   // Lower servo and add elution buffer to column
   levelServo.write(0);
   delay(500);
+  // Local variables
+  unsigned long currentMillis = millis();
+  byte tubeIdx = 1; // counter for tube position
 
   // Fill all tubes - wait until each tube is filled before moving to the next one
   nSteps = round(2048*angleTubes/360); // convert angle to steps, knowing that a rotation is 2048 steps
