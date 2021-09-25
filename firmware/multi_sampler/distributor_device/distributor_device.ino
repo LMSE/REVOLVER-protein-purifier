@@ -117,18 +117,26 @@ void loop() {
       // Read message - ask the REVOLVER if it's idle (1) or busy (0)
       messageFromRevolver = Wire.read();
       // Check if all devices have finished all tasks (by checking if each device
-      // has finished the last task and is currently free)
-      allDone = allDone && (taskIdx[idx] == nTask && messageFromRevolver == 1);
+      // has finished the last task and is currently free). We compare > nTask because
+      // the following if statement increases the counter by one (i.e. the last task is 
+      // to display stuff to the serial monitor)
+      allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver == 1);
 
-      // Parse message - TODO:Complete cases and maybe wrap in function called parseI2C
+      // If we finished the final task and the device is idle, display something
+      if (messageFromRevolver == 1 && taskIdx[idx] == nTask){
+        Serial.print("REVOLVER #");
+        Serial.print(listI2C[idx]);
+        Serial.println(" finished!");
+        taskIdx[idx]++; // make index > nTask so nothing happens until it gets reset to 0
+      }
+
+      // If we haven't finished all tasks, but the REVOLVER is idle, we transmit a new instruction.
+      // By default all REVOLVERs start as "done" and wait for the first instruction,
+      // which is why we update the index after passing the instruction
       if (messageFromRevolver == 1 && taskIdx[idx] < nTask){
-        // Task is finished, so move on to next task for this revolver (as long as there is another task)
-        // by default all REVOLVERs start as "done" and wait for the first instruction,
-        // which is why we update the index after passing the instruction
 
         // If the next task is to pump, we handle that with the distributor by visiting the REVOLVER and pumping.
         // If not, we request the command via I2C
-
         if (taskName[taskIdx[idx]] == 'P'){
           Serial.print("Distributing buffer to REVOLVER I2C #");
           Serial.println(listI2C[idx]);
@@ -159,16 +167,12 @@ void loop() {
         // Update task idx for next iteration
         taskIdx[idx]++;
 
-        // If we finished the final task, display something
-        if (taskIdx[idx] == nTask){
-          Serial.print("REVOLVER #");
-          Serial.print(listI2C[idx]);
-          Serial.println(" finished!");
-        }
-        
       }
 
+
     }
+
+
 
     // If all devices are done, reset and start listenting for more
     if (allDone){
@@ -236,7 +240,7 @@ void parseCommand() {      // split the command into its parts
       args[i] = atoi(strtokIndx);     // convert this part to an integer
       //Serial.println(args[i]);
     }
-    
+
     // If we are storing instructions, we save the current instruction to the required arrays
     // As a precaution, do NOT store a "ROTATE" command since that will cause all REVOLVERs
     // to rotate and mess up the collection
@@ -244,7 +248,7 @@ void parseCommand() {      // split the command into its parts
       taskName[nTask] = messageFromPC[0];
       for (int i = 0; i < nArgs; i++){
         taskArgs[nTask][i] = args[i];
-      }  
+      }
       // Display stuff
       Serial.print("Task '");
       Serial.print(taskName[nTask]);
@@ -267,10 +271,10 @@ void parseCommand() {      // split the command into its parts
       requestedAddress = args[2];
       // Convert number of steps by mod 255 and change the arguments. args[1] is the direction and doesn't change
       args[0] = nSteps % 255;
-      args[2] = nSteps/255;  
+      args[2] = nSteps/255;
     }
 
-    // Check whether we'll start storing instructios in the next command: 
+    // Check whether we'll start storing instructios in the next command:
     // The special command 'X' defines when tasks are stored and when they are not.
     // i.e. the first 'X' indicates to start storing the protocol and the last 'X'
     // stops recording and executes the protocol.
@@ -316,14 +320,14 @@ void executeCommand(){ // TO DO - clean execute function and parse commands
       }
       break;
     case 'S': // Store location of I2C device
-      
+
       Serial.print("Location for device with I2C #");
       Serial.print(args[0]);
       Serial.print(": ");
       Serial.println(angularPos);
       // This code could be simpler if we guarantee that the I2C addresses we use are in order 1,2,...,6 such that the indices are also ordered.
       // but determining the index is fast anyways, so we keep this version where we can use ANY I2C addresses (not necessarily in order)
-      locationsI2C[findIdx(args[0])] = angularPos; 
+      locationsI2C[findIdx(args[0])] = angularPos;
       break;
     case 'V': // Visit a device - ONLY for debugging. We don't want to have manual access to this, not necessary
       visitRevolver(args[0]);
