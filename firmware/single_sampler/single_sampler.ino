@@ -251,7 +251,7 @@ void pumpSolution(float pumpVolume, int pumpID){
   // Turn off pumps
   digitalWrite(pump1, LOW);
   digitalWrite(pump2, LOW);
-  Serial.println("Done!")
+  Serial.println("Done!");
 }
 
 // Function for collecting waste after washes
@@ -292,18 +292,19 @@ void collectWaste(){
 // Fill tubes (collect fractions)
 void fillTubes(){
   Serial.println("Filling tubes");
-  // Local variables
-  unsigned long currentMillis = millis();
-  byte tubeIdx = 1; // counter for tube position
   // Lift servo and move to first tube
   levelServo.write(90);
   delay(500);
   plateStepper.setSpeed(750); //Max seems to be 750
   nSteps = round(2048*angleWaste/360); // convert angle to steps, knowing that a rotation is 2048 steps
   plateStepper.step(nSteps);
-  // Lower servo and add elution buffer to column
+  // Local variables - timer and tube counter
+  unsigned long currentMillis = millis();
+  byte tubeIdx = 1; // counter for tube position
+  // Lower servo
   levelServo.write(0);
   delay(500);
+
 
   // Fill all tubes - wait until each tube is filled before moving to the next one
   nSteps = round(2048*angleTubes/360); // convert angle to steps, knowing that a rotation is 2048 steps
@@ -312,11 +313,11 @@ void fillTubes(){
     sensorValue = digitalRead(tubeSensor);
     // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
     if ((sensorValue == LOW) && (millis() - currentMillis > 5000)){
-      // Reset timer
-      currentMillis = millis();
-      // Sensor triggered, rotate
+      // Sensor triggered, display stuff and rotate
       Serial.print("Done with tube #");
-      Serial.println(tubeIdx);
+      Serial.print(tubeIdx);
+      Serial.print("...time ellapsed (ms): ");
+      Serial.println(millis() - currentMillis);
       // Lift servo - small delay to give time for it to lift
       levelServo.write(90); // 90 degrees turn
       delay(500);
@@ -325,15 +326,17 @@ void fillTubes(){
       if (tubeIdx <= nTubes){
         // Rotate stepper
         plateStepper.step(nSteps);
+        // Reset timer
+        currentMillis = millis();
         // Lower servo for next tube
         levelServo.write(0); // 90 degrees turn
         delay(500);
       }
     }
   }
-  Serial.println("Waiting for the last drops...");
+  Serial.print("Waiting for the last drops...");
   delay(500);
-  Serial.println("Done filling!");
+  Serial.println("Done filling tubes!");
 
   // Move to zero position
   // TO DO - maybe make this an option. If we want to add
