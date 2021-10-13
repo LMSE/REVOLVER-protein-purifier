@@ -118,7 +118,7 @@ void loop() {
       messageFromRevolver = Wire.read();
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free). We compare > nTask because
-      // the following if statement increases the counter by one (i.e. the last task is 
+      // the following if statement increases the counter by one (i.e. the last task is
       // to display stuff to the serial monitor)
       allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver == 1);
 
@@ -163,6 +163,14 @@ void loop() {
           Serial.print(" from device #");
           Serial.print(listI2C[idx]);
           Serial.println("...");
+          // If the task is "C" (collect) and the argument is 1, this is a step where
+          // the user adds the buffer, so we display something to let the user know about this
+          // and make the buzzer beep (TO ADD)
+          if (taskName[taskIdx[idx]] == 'C' && taskArgs[taskIdx[idx]][0] == 1){
+            Serial.print("Please add lysate to device #");
+            Serial.println(listI2C[idx]);
+          }
+
         }
         // Update task idx for next iteration
         taskIdx[idx]++;
@@ -335,6 +343,9 @@ void executeCommand(){ // TO DO - clean execute function and parse commands
     case 'P': // Pump. Useful for purging lines
       pumpSolution(args[0], args[1]); // args 1 is the pump time in milliseconds, args 0 is the pump ID
       break;
+    case 'L'
+      locateI2C();
+      creak; // Auto locate revolvers
     default:
       Serial.println("Requested command cannot be executed by distributor!");
       break;
@@ -381,17 +392,11 @@ void scanI2C() {
 }
 
 // Rotate stepper motor to get locations of I2C devices
-/* if the devices are in pre-defined locations (fixed angles) we can
- *  home the distributor and get it to only check some pre-determined positions
- */
-
-// Optional: Requires hall effect sensors in each device
-// NEEDS work
+// Optional: Requires additional hall effect sensors in each device
 
 void locateI2C(){
 
   Serial.println("Finding locations of devices...");
-
   int docked = 1; // not docked by default
 
   // Rotate the stepper a bit at a time and scan the I2C addresses to see if we docked a device
@@ -457,35 +462,35 @@ void rotatePlate(int steps, int dir){ // mainStepper has a different name from p
 }
 
 // Function for pumping buffers
-void pumpSolution(float pumpVolume, int pumpID){
-  // Calculate the pumping time based on the callibration curve
-  // TO DO - This variable needs to be set somehow without reflashing - I still
-  // prefer using milliseconds
-  float pumpTime;
-  // For our pumps, there is a small delay for the
-  // pump to accelerate that is noticeable if the
-  // requested volume is smaller than 1 mL
-  if (pumpVolume <= 1){
-    pumpTime = pumpVolume*(100/1.1);
-  }
-  else {
-    pumpTime = pumpVolume*(100/1.1)*1.13;
-  }
-  // Turn on the required pump
+void pumpSolution(int pumpVolume, int pumpID){
   if (pumpID == 1){
-    digitalWrite(pump1, HIGH);
-    Serial.print("Pumping buffer #1...");
+    if (pumpVolume <= 1){
+       int pumpTime = pumpVolume*(100/0.74);
+       digitalWrite(pump1, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump1, LOW);
+    }
+    else{
+       int pumpTime = pumpVolume*(100/0.707);
+       digitalWrite(pump1, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump1, LOW);
+    }
   }
   else if (pumpID == 2){
-    digitalWrite(pump2, HIGH);
-    Serial.print("Pumping buffer #2...");
+    if (pumpVolume <= 1){
+       int pumpTime = pumpVolume*(100/0.74);
+       digitalWrite(pump2, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump2, LOW);
+    }
+    else{
+       int pumpTime = pumpVolume*(100/0.42);
+       digitalWrite(pump2, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump2, LOW);
+    }
   }
-  // Delay
-  delay(pumpTime);
-  // Turn off pumps
-  digitalWrite(pump1, LOW);
-  digitalWrite(pump2, LOW);
-  Serial.println("Done!");
 }
 
 // Function for visiting a given REVOLVER. We might take the longest path, but
@@ -534,23 +539,3 @@ byte findIdx(byte val){
   }
   return idx;
 }
-
-
-
-// // Loop through the connected I2C devices and visit them
-// for (int idx = 0; idx < nI2C; idx++){
-//   Wire.requestFrom(listI2C[idx], 1); // request 1 byte
-//   while (Wire.available()){
-//     int c = Wire.read();
-//     if (c==0){
-//       digitalWrite(LED, HIGH);
-//       stepper.step(locationsI2C[idx] - angularPos);
-//       angularPos = locationsI2C[idx];
-//       delay(2000);
-//       stepper.step(-angularPos);
-//       angularPos = 0;
-//       }
-//     else {digitalWrite(LED, LOW);}
-//   }
-//   delay(200);
-// }
