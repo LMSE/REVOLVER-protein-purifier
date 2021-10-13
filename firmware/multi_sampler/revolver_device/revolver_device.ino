@@ -11,7 +11,7 @@ Slave device (i.e. Revolver)
 #include <Wire.h> // For I2C communication - not needed for single device
 
 // I2C address: Make sure each board gets a unique address and write it down on the revolver
-const byte I2CAddress = 2; // this should be an integer between 1 and 127
+const byte I2CAddress = 1; // this should be an integer between 1 and 127
 
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
@@ -116,9 +116,10 @@ void receiveEvent(int howMany){
 }
 
 // Executed when there is a request. For now only indicate if task is done (1) or not (0)
-// this can be extended to request pumps
+// The auto homing routine also requests one byte for the hall effect sensor, so we include that
 void requestEvent(){
-  if (taskDone){
+  byte docked = digitalRead(dockingSensor); // Read docking hall effect
+  if (taskDone || docked == LOW){
     Wire.write(1);
   }
   else {
@@ -224,7 +225,7 @@ void fillTubes(){
   delay(500);
   plateStepper.setSpeed(750); //Max seems to be 750
   nSteps = round(2048*angleWaste/360); // convert angle to steps, knowing that a rotation is 2048 steps
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps+30); // Add 30 steps so the sensor doesn't bump into the tube
   // Lower servo and add elution buffer to column
   levelServo.write(0);
   delay(500);
@@ -238,7 +239,7 @@ void fillTubes(){
     // Read level sensor
     sensorValue = digitalRead(tubeSensor);
     // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
-    if ((sensorValue == LOW) && (millis() - currentMillis > 5000)){
+    if ((sensorValue == LOW) && (millis() - currentMillis > 1000)){
       // Reset timer
       currentMillis = millis();
       // Sensor triggered, rotate
@@ -263,7 +264,7 @@ void fillTubes(){
   // buffer between collections, we need to NOT reset the plate
   // and only do the movement from waste to tube 1 ONCE (when tube idx == 0)
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps-30); //Remove the 30 extra steps we had taken before
 }
 
 // Additional function: Rotate plate manually for manual homing if needed
