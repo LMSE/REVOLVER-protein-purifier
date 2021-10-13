@@ -223,45 +223,52 @@ void homePlate(){
 }
 
 // Function for pumping buffers
-void pumpSolution(float pumpVolume, int pumpID){
-  // Calculate the pumping time based on the callibration curve
-  // TO DO - This variable needs to be set somehow without reflashing - I still
-  // prefer using milliseconds
-  float pumpTime;
-  // For our pumps, there is a small delay for the
-  // pump to accelerate that is noticeable if the
-  // requested volume is smaller than 1 mL
-  if (pumpVolume <= 1){
-    pumpTime = pumpVolume*(100/1.1);
-  }
-  else {
-    pumpTime = pumpVolume*(100/1.1)*1.13;
-  }
-  // Turn on the required pump
+void pumpSolution(int pumpVolume, int pumpID){
   if (pumpID == 1){
-    digitalWrite(pump1, HIGH);
-    Serial.print("Pumping buffer #1...");
+    if (pumpVolume <= 1){
+       int pumpTime = pumpVolume*(100/0.74);
+       digitalWrite(pump1, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump1, LOW);
+    }
+    else{
+       int pumpTime = pumpVolume*(100/0.707);
+       digitalWrite(pump1, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump1, LOW);
+    }
   }
   else if (pumpID == 2){
-    digitalWrite(pump2, HIGH);
-    Serial.print("Pumping buffer #2...");
+    if (pumpVolume <= 1){
+       int pumpTime = pumpVolume*(100/0.74);
+       digitalWrite(pump2, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump2, LOW);
+    }
+    else{
+       int pumpTime = pumpVolume*(100/0.42);
+       digitalWrite(pump2, HIGH);
+       delay(pumpTime);
+       digitalWrite(pump2, LOW);
+    }
   }
-  // Delay
-  delay(pumpTime);
-  // Turn off pumps
-  digitalWrite(pump1, LOW);
-  digitalWrite(pump2, LOW);
-  Serial.println("Done!");
 }
 
 // Function for collecting waste after washes
 void collectWaste(){
+  // If the argument is 1, this is a step where the user adds the buffer, so
+  // we display something to let the user know about this and make the buzzer beep (TO ADD)
+  if (args[0] == 1){
+    Serial.println("Please add lysate to device...");
+  }
+
   int washDone = false;
-  Serial.print("Washing has begun...");
+  Serial.println("Washing has begun...");
+  Serial.println("Waiting for first drop...");
+
   // Wait until the sensor is triggered the first time before we start counting
   while (wasteValue == HIGH){
     wasteValue = digitalRead(wasteSensor);
-    Serial.print("Waiting for first drop...");
     delay(10);
   }
   Serial.println("First drop detected...waiting");
@@ -297,13 +304,17 @@ void fillTubes(){
   delay(500);
   plateStepper.setSpeed(750); //Max seems to be 750
   nSteps = round(2048*angleWaste/360); // convert angle to steps, knowing that a rotation is 2048 steps
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps+30); // add 30 steps so that the servo sensor dips close to the center of the tube
   // Local variables - timer and tube counter
   unsigned long currentMillis = millis();
   byte tubeIdx = 1; // counter for tube position
+  // Move a couple more steps to guarantee the sensor goes in and doesn't bump
+  plateStepper.step(10);
   // Lower servo
   levelServo.write(0);
   delay(500);
+  // Go back those extra steps
+  plateStepper.step(-10);
 
 
   // Fill all tubes - wait until each tube is filled before moving to the next one
@@ -311,6 +322,7 @@ void fillTubes(){
   while (tubeIdx <= nTubes){
     // Read level sensor
     sensorValue = digitalRead(tubeSensor);
+
     // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
     if ((sensorValue == LOW) && (millis() - currentMillis > 5000)){
       // Sensor triggered, display stuff and rotate
@@ -328,9 +340,13 @@ void fillTubes(){
         plateStepper.step(nSteps);
         // Reset timer
         currentMillis = millis();
+        // Move extra steps so the sensor goes in always
+        plateStepper.step(10);
         // Lower servo for next tube
         levelServo.write(0); // 90 degrees turn
         delay(500);
+        // Move back
+        plateStepper.step(-10);
       }
     }
   }
@@ -343,7 +359,7 @@ void fillTubes(){
   // buffer between collections, we need to NOT reset the plate
   // and only do the movement from waste to tube 1 ONCE (when tube idx == 0)
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps-30); // Remove the 30 steps we had added
 }
 
 // Additional function: Rotate plate manually for manual homing if needed
