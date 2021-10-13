@@ -145,38 +145,20 @@ void loop() {
           // Pump the required buffer by passing the arguments of the function
           delay(1000);
           pumpSolution(taskArgs[taskIdx[idx]][0], taskArgs[taskIdx[idx]][1]);
-          delay(1000);
+          // Update task idx for next iteration
+          taskIdx[idx]++;
+          // If the following task is to fill tubes, we don't want to wait for the master to loop
+          // through the other REVOLVERs and waste time before assigning the fill task, so we do it here.
+          // This is only critical after a "pump" operation since the column will start dripping
+          if (taskName[taskIdx[idx]] == 'F'){ // code duplication, might be worth making a small function (sendTaskI2C)
+            sendTaskI2C(); // Task index updated internally
+          }
         }
         else {
-          Wire.beginTransmission(listI2C[idx]);
-          // Write the name of the command to be executed
-          Wire.write(taskName[taskIdx[idx]]);
-          // Write the arguments
-          for (int i = 0; i < nArgs; i++){
-            Wire.write(taskArgs[taskIdx[idx]][i]);
-          }
-          // End transmission
-          Wire.endTransmission();
-          // Display stuff
-          Serial.print("Requesting task ");
-          Serial.print(taskName[taskIdx[idx]]);
-          Serial.print(" from device #");
-          Serial.print(listI2C[idx]);
-          Serial.println("...");
-          // If the task is "C" (collect) and the argument is 1, this is a step where
-          // the user adds the buffer, so we display something to let the user know about this
-          // and make the buzzer beep (TO ADD)
-          if (taskName[taskIdx[idx]] == 'C' && taskArgs[taskIdx[idx]][0] == 1){
-            Serial.print("Please add lysate to device #");
-            Serial.println(listI2C[idx]);
-          }
-
+          sendTaskI2C();
         }
-        // Update task idx for next iteration
-        taskIdx[idx]++;
 
       }
-
 
     }
 
@@ -442,6 +424,36 @@ void locateI2C(){
   }
 
 
+}
+
+// Send I2C command - aux function for keeping main code clean
+void sendTaskI2C(){
+  Wire.beginTransmission(listI2C[idx]);
+  // Write the name of the command to be executed
+  Wire.write(taskName[taskIdx[idx]]);
+  // Write the arguments
+  for (int i = 0; i < nArgs; i++){
+    Wire.write(taskArgs[taskIdx[idx]][i]);
+  }
+  // End transmission
+  Wire.endTransmission();
+  // Display stuff
+  Serial.print("Requesting task ");
+  Serial.print(taskName[taskIdx[idx]]);
+  Serial.print(" from device #");
+  Serial.print(listI2C[idx]);
+  Serial.println("...");
+
+  // If the task is "C" (collect) and the argument is 1, this is a step where
+  // the user adds the buffer, so we display something to let the user know about this
+  // and make the buzzer beep (TO ADD)
+  if (taskName[taskIdx[idx]] == 'C' && taskArgs[taskIdx[idx]][0] == 1){
+    Serial.print("Please add lysate to device #");
+    Serial.println(listI2C[idx]);
+  }
+  
+  // Update task idx for next iteration
+  taskIdx[idx]++;
 }
 
 // ==============================================
