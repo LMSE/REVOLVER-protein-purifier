@@ -379,7 +379,9 @@ void scanI2C() {
 void locateI2C(){
 
   Serial.println("Finding locations of devices...");
-  int docked = 1; // not docked by default
+  byte docked = 0; // not docked by default
+  // Reset position to 0
+  angularPos = 0;
 
   // Rotate the stepper a bit at a time and scan the I2C addresses to see if we docked a device
   while (angularPos < steps2take){ // complete a single rotation
@@ -393,17 +395,17 @@ void locateI2C(){
       //Serial.print("Status for sensor ");
       //Serial.print(listI2C[idx]);
       //Serial.print(" is: ");
-      while (Wire.available()){
+      //while (Wire.available()){
         docked = Wire.read();
         //Serial.println(docked);
-      }
+      //}
       //Serial.println(docked);
-      if (docked == 0){
+      if (docked == 1){
 
         // Hall effect sensor triggered - store the initial position where the sensor was triggered
         locationsI2C[idx] = angularPos;
         // Advance more until the sensor is reset, indicating we passed the docking position
-        while (docked == 0){
+        while (docked == 1){
           // Advance a bit
           mainStepper.step(4);
           angularPos = angularPos + 4;
