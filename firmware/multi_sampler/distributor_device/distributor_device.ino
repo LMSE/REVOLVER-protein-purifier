@@ -150,12 +150,12 @@ void loop() {
           // If the following task is to fill tubes, we don't want to wait for the master to loop
           // through the other REVOLVERs and waste time before assigning the fill task, so we do it here.
           // This is only critical after a "pump" operation since the column will start dripping
-          if (taskName[taskIdx[idx]] == 'F'){ // code duplication, might be worth making a small function (sendTaskI2C)
-            sendTaskI2C(); // Task index updated internally
+          if (taskName[taskIdx[idx]] == 'F'){
+            sendTaskI2C(idx); // Task index updated internally
           }
         }
         else {
-          sendTaskI2C();
+          sendTaskI2C(idx);
         }
 
       }
@@ -325,9 +325,9 @@ void executeCommand(){ // TO DO - clean execute function and parse commands
     case 'P': // Pump. Useful for purging lines
       pumpSolution(args[0], args[1]); // args 1 is the pump time in milliseconds, args 0 is the pump ID
       break;
-    case 'L'
+    case 'L':
       locateI2C();
-      creak; // Auto locate revolvers
+      break; // Auto locate revolvers
     default:
       Serial.println("Requested command cannot be executed by distributor!");
       break;
@@ -427,7 +427,7 @@ void locateI2C(){
 }
 
 // Send I2C command - aux function for keeping main code clean
-void sendTaskI2C(){
+void sendTaskI2C(int idx){
   Wire.beginTransmission(listI2C[idx]);
   // Write the name of the command to be executed
   Wire.write(taskName[taskIdx[idx]]);
@@ -451,7 +451,7 @@ void sendTaskI2C(){
     Serial.print("Please add lysate to device #");
     Serial.println(listI2C[idx]);
   }
-  
+
   // Update task idx for next iteration
   taskIdx[idx]++;
 }
