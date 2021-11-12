@@ -119,7 +119,10 @@ void receiveEvent(int howMany){
 // The auto homing routine also requests one byte for the hall effect sensor, so we include that
 void requestEvent(){
   byte docked = digitalRead(dockingSensor); // Read docking hall effect
-  if (taskDone || docked == LOW){
+  if (taskDone && docked == LOW){
+    Wire.write(2);
+  }
+  else if (taskDone && docked == HIGH){
     Wire.write(1);
   }
   else {

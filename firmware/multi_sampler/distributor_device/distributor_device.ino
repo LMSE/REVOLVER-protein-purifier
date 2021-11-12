@@ -114,16 +114,16 @@ void loop() {
       //delay(3000); // temporary delay for debugging - it seems that if we call I2C while the stepper is running, it interrupts
       // Request status update of revolver
       Wire.requestFrom(listI2C[idx], 1); // request 1 byte
-      // Read message - ask the REVOLVER if it's idle (1) or busy (0)
+      // Read message - ask the REVOLVER if it's idle or busy (0)
       messageFromRevolver = Wire.read();
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free). We compare > nTask because
       // the following if statement increases the counter by one (i.e. the last task is
       // to display stuff to the serial monitor)
-      allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver == 1);
+      allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver != 0);
 
       // If we finished the final task and the device is idle, display something
-      if (messageFromRevolver == 1 && taskIdx[idx] == nTask){
+      if (messageFromRevolver != 0 && taskIdx[idx] == nTask){
         Serial.print("REVOLVER #");
         Serial.print(listI2C[idx]);
         Serial.println(" finished!");
@@ -133,7 +133,7 @@ void loop() {
       // If we haven't finished all tasks, but the REVOLVER is idle, we transmit a new instruction.
       // By default all REVOLVERs start as "done" and wait for the first instruction,
       // which is why we update the index after passing the instruction
-      if (messageFromRevolver == 1 && taskIdx[idx] < nTask){
+      if (messageFromRevolver != 0 && taskIdx[idx] < nTask){
 
         // If the next task is to pump, we handle that with the distributor by visiting the REVOLVER and pumping.
         // If not, we request the command via I2C
@@ -380,13 +380,13 @@ void locateI2C(){
 
   Serial.println("Finding locations of devices...");
   byte docked = 0; // not docked by default
-  // Reset position to 0
   angularPos = 0;
-
+ // mainStepper.step(-steps2take/2);
   // Rotate the stepper a bit at a time and scan the I2C addresses to see if we docked a device
   while (angularPos < steps2take){ // complete a single rotation
-    mainStepper.step(16); // arbitrary rotation, but should be small - can change
-    angularPos = angularPos + 16;
+    mainStepper.step(10); // arbitrary rotation, but should be small - can change
+    angularPos = angularPos + 10;
+    //Serial.println("Searching...");
 
     // Loop for the I2C devices
     for (int idx = 0; idx < nI2C; idx++){
@@ -395,27 +395,30 @@ void locateI2C(){
       //Serial.print("Status for sensor ");
       //Serial.print(listI2C[idx]);
       //Serial.print(" is: ");
-      //while (Wire.available()){
-        docked = Wire.read();
+      while (Wire.available()){
+        docked = Wire.read(); // The reolver will return a '2' if we are docked. If not it will return a 1 or a 0 depending on taskDone
         //Serial.println(docked);
-      //}
+      }
       //Serial.println(docked);
-      if (docked == 1){
+      if (docked == 2){
 
         // Hall effect sensor triggered - store the initial position where the sensor was triggered
         locationsI2C[idx] = angularPos;
         // Advance more until the sensor is reset, indicating we passed the docking position
-        while (docked == 1){
+        while (docked == 2){
           // Advance a bit
           mainStepper.step(4);
           angularPos = angularPos + 4;
           // Interrogate slave
           Wire.requestFrom(listI2C[idx], 1); // request 1 byte
           docked = Wire.read();
+          //Serial.println("meep");
         }
         // Sensor was reset. The location of the I2C device is the average of the initial
         // position and the current position
         locationsI2C[idx] = round((locationsI2C[idx] + angularPos)/2);
+        //locationsI2C[idx] = locationsI2C[idx] + steps2take/2;
+        //locationsI2C[idx] = locationsI2C[idx] % steps2take;
         Serial.print("Location of I2C #");
         Serial.print(listI2C[idx]);
         Serial.print(" found at n = ");
