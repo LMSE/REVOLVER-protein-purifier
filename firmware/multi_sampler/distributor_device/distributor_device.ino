@@ -449,11 +449,10 @@ void sendTaskI2C(int idx){
   Serial.print(listI2C[idx]);
   Serial.println("...");
 
-  // If the task is "C" (collect) and the argument is 1, this is a step where
-  // the user adds the buffer, so we display something to let the user know about this
-  // and make the buzzer beep (TO ADD)
-  if (taskName[taskIdx[idx]] == 'C' && taskArgs[taskIdx[idx]][0] == 1){
-    Serial.print("Please add lysate to device #");
+  // If the task is "C" (collect) we display something to reminder the user to add lysate
+  // if needed
+  if (taskName[taskIdx[idx]] == 'C'){
+    Serial.print("If needed, please add lysate to device #");
     Serial.println(listI2C[idx]);
   }
 
