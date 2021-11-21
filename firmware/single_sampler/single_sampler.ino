@@ -8,6 +8,9 @@ Instructions set via serial connection
 #include <Servo.h>  // For driving the microservo (SG90)
 //# include <Wire.h> // For I2C communication - not needed for single device
 
+// Define the type of collector (1 for normal, 2 for siphon version)
+byte collectorType = 1;
+
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
 const byte servoPin = 3; // Servo
@@ -29,20 +32,18 @@ volatile byte nTubes = 5; // Number of tubes in the sampler - default 5, bu can 
 byte sensorValue; // Value of the level sensor attached to the servo
 byte wasteValue = HIGH; // Value of the liquid sensor in waste collector - default HIGH = not triggered
 int numWashes = 1; //Number of washes
-
 int nSteps;  // 2048 = 1 Revolution
-
 bool washDone; // Logical value indicating whether the wash solution has completely left the column
 unsigned long timeOff = 0; // time that the waste collector is empty
 unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
-// TO DO: Add variables given by serial port as volatile. Another version of the firmware called "stand alone" might be needed that has pre-set arguments to not use the PC
 
 // Variables for parsing serial communication
 const byte numChars = 32; // this value could be smaller or larger, as long as it fits the largest expected message
 char receivedChars[numChars];
 char tempChars[numChars];        // temporary array for use when parsing
-// variables to hold the parsed data
+
+// Variables to hold the parsed data
 char messageFromPC[numChars] = {0};
 int ledInstruction = 0;
 boolean newData = false;
@@ -256,42 +257,81 @@ void pumpSolution(int pumpVolume, int pumpID){
 
 // Function for collecting waste after washes
 void collectWaste(){
-  // If the argument is 1, this is a step where the user adds the buffer, so
-  // we display something to let the user know about this and make the buzzer beep (TO ADD)
-  if (args[0] == 1){
-    Serial.println("Please add lysate to device...");
-  }
-
   int washDone = false;
   Serial.println("Washing has begun...");
   Serial.println("Waiting for first drop...");
 
-  // Wait until the sensor is triggered the first time before we start counting
+  // Wait until the sensor is triggered the first time before we start counting.
+  // If it's not triggered within a certain time, it might be that the user forgot to add lysate,
+  // so we display a reminder
+  currentMillis = millis();
   while (wasteValue == HIGH){
     wasteValue = digitalRead(wasteSensor);
     delay(10);
-  }
-  Serial.println("First drop detected...waiting");
-  // Get current time
-  currentMillis = millis();
-  while (!washDone){
-    wasteValue = digitalRead(wasteSensor);
-    if (wasteValue == LOW){
-      // Reset timer: Sensor triggered, there is liquid in waste collector.
+    if (millis() - currentMillis >= timeEmpty){
+      // Display reminder
+      Serial.println("No liquid detected so far. Did you forget to add the lysate or input a prior command to pump wash solution?");
+      // Reset timer
       currentMillis = millis();
-      timeOff = 0;
-      Serial.println("Drops detected");
     }
-    else{
-      // Increase time counter: No liquid detected.
-      timeOff = millis() - currentMillis;
-      Serial.println("Drops not detected");
-    }
-    // Has the collector been empty for longer than the threshold time?
-    //Return FALSE if timeOff does not exceed threshold seconds.
-    washDone = (timeOff >= timeEmpty);
-    delay(10);
   }
+  // Loop exits if a drop was detected
+  Serial.println("First drop detected...waiting");
+
+  // Handle the waste collection depending on the type of collector
+  switch (collectorType){
+    // Version 1 of collector - exit criterion is that the colelctor remains empty
+    case 1:
+      // Get current time
+      currentMillis = millis();
+      while (!washDone){
+        wasteValue = digitalRead(wasteSensor);
+        if (wasteValue == LOW){
+          // Reset timer: Sensor triggered, there is liquid in waste collector.
+          currentMillis = millis();
+          timeOff = 0;
+          Serial.println("Drops detected"); //Should we remove this prompt? it clutters the monitor
+        }
+        else{
+          // Increase time counter: No liquid detected.
+          timeOff = millis() - currentMillis;
+          Serial.println("Drops not detected");
+        }
+        // Has the collector been empty for longer than the threshold time?
+        //Return FALSE if timeOff does not exceed threshold seconds.
+        washDone = (timeOff >= timeEmpty);
+        delay(10);
+      }
+      break;
+    // Version 2 of collector (siphon) - exit criterion is that the collector signal
+    // stops changing (i.e. stays full OR empty)
+    case 2:
+    // Get current time and read initial state of sensor
+    currentMillis = millis();
+    byte wasteValueOld = digitalRead(wasteSensor);
+    while (!washDone){
+      // Read sensor
+      wasteValue = digitalRead(wasteSensor);
+      if (wasteValue != wasteValueOld){
+        // Reset timer: Liquid content in the siphon changed
+        currentMillis = millis();
+        timeOff = 0;
+        Serial.println("Siphon level changed");
+      }
+      else{
+        // Increase time counter: Siphon state is unchanged
+        timeOff = millis() - currentMillis;
+      }
+      // Update old state
+      wasteValueOld = wasteValue;
+      // Has the collector been empty for longer than the threshold time?
+      //Return FALSE if timeOff does not exceed threshold seconds.
+      washDone = (timeOff >= timeEmpty);
+      delay(10);
+    }
+    break;
+  }
+
   Serial.println("Wash done!");
   delay(2000);
 }
