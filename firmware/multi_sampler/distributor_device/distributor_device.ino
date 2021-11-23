@@ -6,9 +6,15 @@ Master device
 */
 
 // V1 - I2C scanner based on code from https://playground.arduino.cc/Main/I2cScanner/
-
+// Include libraries
 #include <Wire.h>
 #include <Stepper.h>
+
+// Calibration factors for pumps (to convert mL to time)
+const float smallVolumeCalibrationPump1 = 1.00;
+const float largeVolumeCalibrationPump1 = 1.00;
+const float smallVolumeCalibrationPump2 = 1.00;
+const float largeVolumeCalibrationPump2 = 1.00;
 
 // Define pins - distributor only has a stepper motor and pumps
 const byte pump1 = 6; // Pump#1
@@ -479,34 +485,41 @@ void rotatePlate(int steps, int dir){ // mainStepper has a different name from p
 
 // Function for pumping buffers
 void pumpSolution(int pumpVolume, int pumpID){
-  if (pumpID == 1){
+  float pumpTime;
+  // For our pumps, there is a small delay for the
+  // pump to accelerate that is noticeable if the
+  // requested volume is smaller than 1 mL
+  if (pumpID ==1){
     if (pumpVolume <= 1){
-       int pumpTime = pumpVolume*(100/0.74);
-       digitalWrite(pump1, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump1, LOW);
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump1);
     }
-    else{
-       int pumpTime = pumpVolume*(100/0.707);
-       digitalWrite(pump1, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump1, LOW);
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump1);
     }
+  }
+  if (pumpID ==2){
+    if (pumpVolume <= 1){
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump2);
+    }
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump2);
+    }
+  }
+  // Turn on the required pump
+  if (pumpID == 1){
+    digitalWrite(pump1, HIGH);
+    Serial.print("Pumping buffer #1...");
   }
   else if (pumpID == 2){
-    if (pumpVolume <= 1){
-       int pumpTime = pumpVolume*(100/0.74);
-       digitalWrite(pump2, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump2, LOW);
-    }
-    else{
-       int pumpTime = pumpVolume*(100/0.42);
-       digitalWrite(pump2, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump2, LOW);
-    }
+    digitalWrite(pump2, HIGH);
+    Serial.print("Pumping buffer #2...");
   }
+  // Delay
+  delay(pumpTime);
+  // Turn off pumps
+  digitalWrite(pump1, LOW);
+  digitalWrite(pump2, LOW);
+  Serial.println("Done!");
 }
 
 // Function for visiting a given REVOLVER. We might take the longest path, but

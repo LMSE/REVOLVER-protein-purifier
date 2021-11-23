@@ -10,6 +10,11 @@ Instructions set via serial connection
 
 // Define the type of collector (1 for normal, 2 for siphon version)
 byte collectorType = 1;
+// Calibration factors for pumps (to convert mL to time)
+const float smallVolumeCalibrationPump1 = 1.00;
+const float largeVolumeCalibrationPump1 = 1.00;
+const float smallVolumeCalibrationPump2 = 1.00;
+const float largeVolumeCalibrationPump2 = 1.00;
 
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
@@ -27,7 +32,7 @@ const byte motPins[] = {9, 10, 11, 12}; // Pins for stepper motor
 #define STEPS  32   // Number of steps per revolution of internal shaft of a 28byj-48 stepper
 const float angleTubes = 23.8; // angular separation between tubes in degrees
 const float angleWaste = 43.3; // angle between the center of the waste collector and the center of the first tube
-volatile byte nTubes = 5; // Number of tubes in the sampler - default 5, bu can be modified
+volatile byte nTubes = 5; // Number of tubes in the sampler - default 5, but can be modified
 // Other variables
 byte sensorValue; // Value of the level sensor attached to the servo
 byte wasteValue = HIGH; // Value of the liquid sensor in waste collector - default HIGH = not triggered
@@ -225,34 +230,41 @@ void homePlate(){
 
 // Function for pumping buffers
 void pumpSolution(int pumpVolume, int pumpID){
-  if (pumpID == 1){
+  float pumpTime;
+  // For our pumps, there is a small delay for the
+  // pump to accelerate that is noticeable if the
+  // requested volume is smaller than 1 mL
+  if (pumpID ==1){
     if (pumpVolume <= 1){
-       int pumpTime = pumpVolume*(100/0.74);
-       digitalWrite(pump1, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump1, LOW);
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump1);
     }
-    else{
-       int pumpTime = pumpVolume*(100/0.707);
-       digitalWrite(pump1, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump1, LOW);
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump1);
     }
+  }
+  if (pumpID ==2){
+    if (pumpVolume <= 1){
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump2);
+    }
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump2);
+    }
+  }
+  // Turn on the required pump
+  if (pumpID == 1){
+    digitalWrite(pump1, HIGH);
+    Serial.print("Pumping buffer #1...");
   }
   else if (pumpID == 2){
-    if (pumpVolume <= 1){
-       int pumpTime = pumpVolume*(100/0.74);
-       digitalWrite(pump2, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump2, LOW);
-    }
-    else{
-       int pumpTime = pumpVolume*(100/0.42);
-       digitalWrite(pump2, HIGH);
-       delay(pumpTime);
-       digitalWrite(pump2, LOW);
-    }
+    digitalWrite(pump2, HIGH);
+    Serial.print("Pumping buffer #2...");
   }
+  // Delay
+  delay(pumpTime);
+  // Turn off pumps
+  digitalWrite(pump1, LOW);
+  digitalWrite(pump2, LOW);
+  Serial.println("Done!");
 }
 
 // Function for collecting waste after washes
