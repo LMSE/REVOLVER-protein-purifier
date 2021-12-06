@@ -2,7 +2,7 @@
 Arduino code for running the sample collection from a chromatography process with a single collector.
 Instructions set via serial connection and sent to distributors
 ----------------
-Slave device (i.e. Revolver)
+Worker device (i.e. Revolver)
 */
 
 // Include libraries
@@ -11,7 +11,9 @@ Slave device (i.e. Revolver)
 #include <Wire.h> // For I2C communication - not needed for single device
 
 // I2C address: Make sure each board gets a unique address and write it down on the revolver
-const byte I2CAddress = 2; // this should be an integer between 1 and 127
+const byte I2CAddress = 1; // this should be an integer between 1 and 127
+// Define the type of collector (1 for normal, 2 for siphon version)
+byte collectorType = 1;
 
 // Define pins - these are meant to work with an Arduino Nano, but should also work with an Arduino Uno
 const byte tubeSensor = 2; // Level sensor in eppi tubes
@@ -34,14 +36,11 @@ volatile byte nTubes = 5; // Number of tubes in the sampler - default 5, bu can 
 byte sensorValue; // Value of the level sensor attached to the servo
 byte wasteValue = HIGH; // Value of the liquid sensor in waste collector - default HIGH = not triggered
 int numWashes = 1; //Number of washes
-
 int nSteps;  // 2048 = 1 Revolution
-
 bool washDone; // Logical value indicating whether the wash solution has completely left the column
 unsigned long timeOff = 0; // time that the waste collector is empty
 unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
-// TO DO: Add variables given by serial port as volatile. Another version of the firmware called "stand alone" might be needed that has pre-set arguments to not use the PC
 
 // Variables for parsing I2C communication
 char messageFromMaster; // Character describing the instruction to execute
@@ -116,9 +115,13 @@ void receiveEvent(int howMany){
 }
 
 // Executed when there is a request. For now only indicate if task is done (1) or not (0)
-// this can be extended to request pumps
+// The auto homing routine also requests one byte for the hall effect sensor, so we include that
 void requestEvent(){
-  if (taskDone){
+  byte docked = digitalRead(dockingSensor); // Read docking hall effect
+  if (taskDone && docked == LOW){
+    Wire.write(2);
+  }
+  else if (taskDone && docked == HIGH){
     Wire.write(1);
   }
   else {
@@ -191,30 +194,65 @@ void homePlate(){
 // Function for collecting waste after washes
 void collectWaste(){
   int washDone = false;
-  // Wait until the sensor is triggered the first time before we start counting
+  // Wait until the sensor is triggered the first time before we start counting.
   while (wasteValue == HIGH){
     wasteValue = digitalRead(wasteSensor);
     delay(10);
   }
-  // Get current time
-  currentMillis = millis();
-  while (!washDone){
-    wasteValue = digitalRead(wasteSensor);
-    if (wasteValue == LOW){
-      // Reset timer: Sensor triggered, there is liquid in waste collector.
+
+  // Handle the waste collection depending on the type of collector
+  switch (collectorType){
+    // Version 1 of collector - exit criterion is that the colelctor remains empty
+    case 1:
+      // Get current time
       currentMillis = millis();
-      timeOff = 0;
+      while (!washDone){
+        wasteValue = digitalRead(wasteSensor);
+        if (wasteValue == LOW){
+          // Reset timer: Sensor triggered, there is liquid in waste collector.
+          currentMillis = millis();
+          timeOff = 0;
+        }
+        else{
+          // Increase time counter: No liquid detected.
+          timeOff = millis() - currentMillis;
+        }
+        // Has the collector been empty for longer than the threshold time?
+        //Return FALSE if timeOff does not exceed threshold seconds.
+        washDone = (timeOff >= timeEmpty);
+        delay(10);
+      }
+      break;
+    // Version 2 of collector (siphon) - exit criterion is that the collector signal
+    // stops changing (i.e. stays full OR empty)
+    case 2:
+    // Get current time and read initial state of sensor
+    currentMillis = millis();
+    byte wasteValueOld = digitalRead(wasteSensor);
+    while (!washDone){
+      // Read sensor
+      wasteValue = digitalRead(wasteSensor);
+      if (wasteValue != wasteValueOld){
+        // Reset timer: Liquid content in the siphon changed
+        currentMillis = millis();
+        timeOff = 0;
+      }
+      else{
+        // Increase time counter: Siphon state is unchanged
+        timeOff = millis() - currentMillis;
+      }
+      // Update old state
+      wasteValueOld = wasteValue;
+      // Has the collector been empty for longer than the threshold time?
+      //Return FALSE if timeOff does not exceed threshold seconds.
+      washDone = (timeOff >= timeEmpty);
+      delay(10);
     }
-    else{
-      // Increase time counter: No liquid detected.
-      timeOff = millis() - currentMillis;
-    }
-    // Has the collector been empty for longer than the threshold time?
-    //Return FALSE if timeOff does not exceed threshold seconds.
-    washDone = (timeOff >= timeEmpty);
-    delay(10);
+    break;
   }
+
   delay(2000);
+
 }
 
 // Fill tubes (collect fractions)
@@ -224,7 +262,7 @@ void fillTubes(){
   delay(500);
   plateStepper.setSpeed(750); //Max seems to be 750
   nSteps = round(2048*angleWaste/360); // convert angle to steps, knowing that a rotation is 2048 steps
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps+30); // Add 30 steps so the sensor doesn't bump into the tube
   // Lower servo and add elution buffer to column
   levelServo.write(0);
   delay(500);
@@ -238,7 +276,7 @@ void fillTubes(){
     // Read level sensor
     sensorValue = digitalRead(tubeSensor);
     // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
-    if ((sensorValue == LOW) && (millis() - currentMillis > 5000)){
+    if ((sensorValue == LOW) && (millis() - currentMillis > 1000)){
       // Reset timer
       currentMillis = millis();
       // Sensor triggered, rotate
@@ -263,7 +301,7 @@ void fillTubes(){
   // buffer between collections, we need to NOT reset the plate
   // and only do the movement from waste to tube 1 ONCE (when tube idx == 0)
   nSteps = round(2048*(360 - (nTubes-1)*angleTubes - angleWaste)/360);
-  plateStepper.step(nSteps);
+  plateStepper.step(nSteps-30); //Remove the 30 extra steps we had taken before
 }
 
 // Additional function: Rotate plate manually for manual homing if needed

@@ -6,9 +6,15 @@ Master device
 */
 
 // V1 - I2C scanner based on code from https://playground.arduino.cc/Main/I2cScanner/
-
+// Include libraries
 #include <Wire.h>
 #include <Stepper.h>
+
+// Calibration factors for pumps (to convert mL to time)
+const float smallVolumeCalibrationPump1 = 1.00;
+const float largeVolumeCalibrationPump1 = 1.00;
+const float smallVolumeCalibrationPump2 = 1.00;
+const float largeVolumeCalibrationPump2 = 1.00;
 
 // Define pins - distributor only has a stepper motor and pumps
 const byte pump1 = 6; // Pump#1
@@ -114,16 +120,16 @@ void loop() {
       //delay(3000); // temporary delay for debugging - it seems that if we call I2C while the stepper is running, it interrupts
       // Request status update of revolver
       Wire.requestFrom(listI2C[idx], 1); // request 1 byte
-      // Read message - ask the REVOLVER if it's idle (1) or busy (0)
+      // Read message - ask the REVOLVER if it's idle or busy (0)
       messageFromRevolver = Wire.read();
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free). We compare > nTask because
-      // the following if statement increases the counter by one (i.e. the last task is 
+      // the following if statement increases the counter by one (i.e. the last task is
       // to display stuff to the serial monitor)
-      allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver == 1);
+      allDone = allDone && (taskIdx[idx] > nTask && messageFromRevolver != 0);
 
       // If we finished the final task and the device is idle, display something
-      if (messageFromRevolver == 1 && taskIdx[idx] == nTask){
+      if (messageFromRevolver != 0 && taskIdx[idx] == nTask){
         Serial.print("REVOLVER #");
         Serial.print(listI2C[idx]);
         Serial.println(" finished!");
@@ -133,7 +139,7 @@ void loop() {
       // If we haven't finished all tasks, but the REVOLVER is idle, we transmit a new instruction.
       // By default all REVOLVERs start as "done" and wait for the first instruction,
       // which is why we update the index after passing the instruction
-      if (messageFromRevolver == 1 && taskIdx[idx] < nTask){
+      if (messageFromRevolver != 0 && taskIdx[idx] < nTask){
 
         // If the next task is to pump, we handle that with the distributor by visiting the REVOLVER and pumping.
         // If not, we request the command via I2C
@@ -145,30 +151,20 @@ void loop() {
           // Pump the required buffer by passing the arguments of the function
           delay(1000);
           pumpSolution(taskArgs[taskIdx[idx]][0], taskArgs[taskIdx[idx]][1]);
-          delay(1000);
+          // Update task idx for next iteration
+          taskIdx[idx]++;
+          // If the following task is to fill tubes, we don't want to wait for the master to loop
+          // through the other REVOLVERs and waste time before assigning the fill task, so we do it here.
+          // This is only critical after a "pump" operation since the column will start dripping
+          if (taskName[taskIdx[idx]] == 'F'){
+            sendTaskI2C(idx); // Task index updated internally
+          }
         }
         else {
-          Wire.beginTransmission(listI2C[idx]);
-          // Write the name of the command to be executed
-          Wire.write(taskName[taskIdx[idx]]);
-          // Write the arguments
-          for (int i = 0; i < nArgs; i++){
-            Wire.write(taskArgs[taskIdx[idx]][i]);
-          }
-          // End transmission
-          Wire.endTransmission();
-          // Display stuff
-          Serial.print("Requesting task ");
-          Serial.print(taskName[taskIdx[idx]]);
-          Serial.print(" from device #");
-          Serial.print(listI2C[idx]);
-          Serial.println("...");
+          sendTaskI2C(idx);
         }
-        // Update task idx for next iteration
-        taskIdx[idx]++;
 
       }
-
 
     }
 
@@ -335,6 +331,9 @@ void executeCommand(){ // TO DO - clean execute function and parse commands
     case 'P': // Pump. Useful for purging lines
       pumpSolution(args[0], args[1]); // args 1 is the pump time in milliseconds, args 0 is the pump ID
       break;
+    case 'L':
+      locateI2C();
+      break; // Auto locate revolvers
     default:
       Serial.println("Requested command cannot be executed by distributor!");
       break;
@@ -381,23 +380,19 @@ void scanI2C() {
 }
 
 // Rotate stepper motor to get locations of I2C devices
-/* if the devices are in pre-defined locations (fixed angles) we can
- *  home the distributor and get it to only check some pre-determined positions
- */
-
-// Optional: Requires hall effect sensors in each device
-// NEEDS work
+// Optional: Requires additional hall effect sensors in each device
 
 void locateI2C(){
 
   Serial.println("Finding locations of devices...");
-
-  int docked = 1; // not docked by default
-
+  byte docked = 0; // not docked by default
+  angularPos = 0;
+ // mainStepper.step(-steps2take/2);
   // Rotate the stepper a bit at a time and scan the I2C addresses to see if we docked a device
   while (angularPos < steps2take){ // complete a single rotation
-    mainStepper.step(16); // arbitrary rotation, but should be small - can change
-    angularPos = angularPos + 16;
+    mainStepper.step(10); // arbitrary rotation, but should be small - can change
+    angularPos = angularPos + 10;
+    //Serial.println("Searching...");
 
     // Loop for the I2C devices
     for (int idx = 0; idx < nI2C; idx++){
@@ -407,26 +402,29 @@ void locateI2C(){
       //Serial.print(listI2C[idx]);
       //Serial.print(" is: ");
       while (Wire.available()){
-        docked = Wire.read();
+        docked = Wire.read(); // The reolver will return a '2' if we are docked. If not it will return a 1 or a 0 depending on taskDone
         //Serial.println(docked);
       }
       //Serial.println(docked);
-      if (docked == 0){
+      if (docked == 2){
 
         // Hall effect sensor triggered - store the initial position where the sensor was triggered
         locationsI2C[idx] = angularPos;
         // Advance more until the sensor is reset, indicating we passed the docking position
-        while (docked == 0){
+        while (docked == 2){
           // Advance a bit
           mainStepper.step(4);
           angularPos = angularPos + 4;
           // Interrogate slave
           Wire.requestFrom(listI2C[idx], 1); // request 1 byte
           docked = Wire.read();
+          //Serial.println("meep");
         }
         // Sensor was reset. The location of the I2C device is the average of the initial
         // position and the current position
         locationsI2C[idx] = round((locationsI2C[idx] + angularPos)/2);
+        //locationsI2C[idx] = locationsI2C[idx] + steps2take/2;
+        //locationsI2C[idx] = locationsI2C[idx] % steps2take;
         Serial.print("Location of I2C #");
         Serial.print(listI2C[idx]);
         Serial.print(" found at n = ");
@@ -437,6 +435,35 @@ void locateI2C(){
   }
 
 
+}
+
+// Send I2C command - aux function for keeping main code clean
+void sendTaskI2C(int idx){
+  Wire.beginTransmission(listI2C[idx]);
+  // Write the name of the command to be executed
+  Wire.write(taskName[taskIdx[idx]]);
+  // Write the arguments
+  for (int i = 0; i < nArgs; i++){
+    Wire.write(taskArgs[taskIdx[idx]][i]);
+  }
+  // End transmission
+  Wire.endTransmission();
+  // Display stuff
+  Serial.print("Requesting task ");
+  Serial.print(taskName[taskIdx[idx]]);
+  Serial.print(" from device #");
+  Serial.print(listI2C[idx]);
+  Serial.println("...");
+
+  // If the task is "C" (collect) we display something to reminder the user to add lysate
+  // if needed
+  if (taskName[taskIdx[idx]] == 'C'){
+    Serial.print("If needed, please add lysate to device #");
+    Serial.println(listI2C[idx]);
+  }
+
+  // Update task idx for next iteration
+  taskIdx[idx]++;
 }
 
 // ==============================================
@@ -457,19 +484,26 @@ void rotatePlate(int steps, int dir){ // mainStepper has a different name from p
 }
 
 // Function for pumping buffers
-void pumpSolution(float pumpVolume, int pumpID){
-  // Calculate the pumping time based on the callibration curve
-  // TO DO - This variable needs to be set somehow without reflashing - I still
-  // prefer using milliseconds
+void pumpSolution(int pumpVolume, int pumpID){
   float pumpTime;
   // For our pumps, there is a small delay for the
   // pump to accelerate that is noticeable if the
   // requested volume is smaller than 1 mL
-  if (pumpVolume <= 1){
-    pumpTime = pumpVolume*(100/1.1);
+  if (pumpID ==1){
+    if (pumpVolume <= 1){
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump1);
+    }
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump1);
+    }
   }
-  else {
-    pumpTime = pumpVolume*(100/1.1)*1.13;
+  if (pumpID ==2){
+    if (pumpVolume <= 1){
+      pumpTime = pumpVolume*(100*smallVolumeCalibrationPump2);
+    }
+    else {
+      pumpTime = pumpVolume*(100*largeVolumeCalibrationPump2);
+    }
   }
   // Turn on the required pump
   if (pumpID == 1){
@@ -534,23 +568,3 @@ byte findIdx(byte val){
   }
   return idx;
 }
-
-
-
-// // Loop through the connected I2C devices and visit them
-// for (int idx = 0; idx < nI2C; idx++){
-//   Wire.requestFrom(listI2C[idx], 1); // request 1 byte
-//   while (Wire.available()){
-//     int c = Wire.read();
-//     if (c==0){
-//       digitalWrite(LED, HIGH);
-//       stepper.step(locationsI2C[idx] - angularPos);
-//       angularPos = locationsI2C[idx];
-//       delay(2000);
-//       stepper.step(-angularPos);
-//       angularPos = 0;
-//       }
-//     else {digitalWrite(LED, LOW);}
-//   }
-//   delay(200);
-// }
