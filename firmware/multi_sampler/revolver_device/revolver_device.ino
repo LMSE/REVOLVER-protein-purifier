@@ -86,7 +86,7 @@ void setup(){
 
 /* Loop function - listen to I2C bus */
 void loop(){
-  // Execute commands given by serial to the master and sent via I2C to revolver
+  // Execute commands given by serial to the distributor and sent via I2C to revolver
   if (newTask){
     digitalWrite(LED_BUILTIN, HIGH); // LED for debugging
     newTask = false;
@@ -100,9 +100,9 @@ void loop(){
 // ====================================================
 // Functions for I2C
 
-// Once a task is done, we inform the master, who sends a new command
+// Once a task is done, we inform the distributor, who sends a new command
 void receiveEvent(int howMany){
-  // Read data in I2C bus - the master will send 4 bytes:
+  // Read data in I2C bus - the distributor will send 4 bytes:
   // a character with the instruction, and three ints as arguments
   messageFromMaster = Wire.read(); // receive byte 1 as a character. When we read, we evacuate one byte
   for (int i = 0; i < nArgs; i++){

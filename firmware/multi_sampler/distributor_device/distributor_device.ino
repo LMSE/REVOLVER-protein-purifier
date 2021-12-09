@@ -2,7 +2,7 @@
 Arduino code for running the sample collection from a chromatography process with a single collector.
 Instructions set via serial connection and sent to distributors
 ----------------
-Master device
+Distributor device
 */
 
 // V1 - I2C scanner based on code from https://playground.arduino.cc/Main/I2cScanner/
@@ -153,7 +153,7 @@ void loop() {
           pumpSolution(taskArgs[taskIdx[idx]][0], taskArgs[taskIdx[idx]][1]);
           // Update task idx for next iteration
           taskIdx[idx]++;
-          // If the following task is to fill tubes, we don't want to wait for the master to loop
+          // If the following task is to fill tubes, we don't want to wait for the distributor to loop
           // through the other REVOLVERs and waste time before assigning the fill task, so we do it here.
           // This is only critical after a "pump" operation since the column will start dripping
           if (taskName[taskIdx[idx]] == 'F'){
@@ -256,7 +256,7 @@ void parseCommand() {      // split the command into its parts
     // If the task is to rotate, we need to modify the arguments a bit because
     // the number of steps requested might be larger than 255 and won't fit in a single byte for I2C.
     // To solve this, we don't pass the number of steps as the first argument, but we pass mod(n,255)
-    // and as a third argument we pass the whole part of n/255. That way we tell the slaves how many time to
+    // and as a third argument we pass the whole part of n/255. That way we tell the workers how many time to
     // rotate 255 steps, plus a bit more
     if (messageFromPC[0] == 'R'){
       // This task should only be called before recording the protocol since it's only used
@@ -303,7 +303,7 @@ void executeCommand(){ // TO DO - clean execute function and parse commands
         rotatePlate(args[0] + 255*args[2], args[1]);
       }
       else {
-        // Pass arguments to slave via I2C
+        // Pass arguments to worker via I2C
         Wire.beginTransmission(requestedAddress);
         // Write the name of the command to be executed
         Wire.write('R');
@@ -415,7 +415,7 @@ void locateI2C(){
           // Advance a bit
           mainStepper.step(4);
           angularPos = angularPos + 4;
-          // Interrogate slave
+          // Interrogate worker
           Wire.requestFrom(listI2C[idx], 1); // request 1 byte
           docked = Wire.read();
           //Serial.println("meep");
