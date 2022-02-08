@@ -122,6 +122,14 @@ void loop() {
       Wire.requestFrom(listI2C[idx], 1); // request 1 byte
       // Read message - ask the REVOLVER if it's idle or busy (0)
       messageFromRevolver = Wire.read();
+      // If the message is '3', that means that there was an error with the REVOLVER,
+      // potentially due to the pump not working. Alert user
+      if (messageFromRevolver == 3){
+        Serial.print("Error ocurred when collecting waste of filling tubes in REVOLVER #");
+        Serial.println(listI2C[idx]);
+        Serial.println("Maybe not enough buffer was added for the number of tubes to be filled or the pumps need to be checked");
+      }
+      
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free). We compare > nTask because
       // the following if statement increases the counter by one (i.e. the last task is
@@ -433,8 +441,6 @@ void locateI2C(){
       }
     }
   }
-
-
 }
 
 // Send I2C command - aux function for keeping main code clean

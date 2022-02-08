@@ -41,6 +41,9 @@ bool washDone; // Logical value indicating whether the wash solution has complet
 unsigned long timeOff = 0; // time that the waste collector is empty
 unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
+const unsigned long timeMin = 5000; // Minimum time in milliseconds to spend in each microfuge tube
+const unsigned long timeMaxTube = 60000; // Maximum time in millseconds that we'll wait for each tube before showing a warning
+bool sendError = false; // flag to indicate if we get the distributor to display an error message
 
 // Variables for parsing I2C communication
 char messageFromMaster; // Character describing the instruction to execute
@@ -116,16 +119,26 @@ void receiveEvent(int howMany){
 
 // Executed when there is a request. For now only indicate if task is done (1) or not (0)
 // The auto homing routine also requests one byte for the hall effect sensor, so we include that
+// as another message
 void requestEvent(){
   byte docked = digitalRead(dockingSensor); // Read docking hall effect
-  if (taskDone && docked == LOW){
-    Wire.write(2);
-  }
-  else if (taskDone && docked == HIGH){
-    Wire.write(1);
+  if (sendError){
+    // Display error message, takes precedence over anything else
+    Wire.write(3);
+    // Reset error flag
+    sendError = false;
   }
   else {
-    Wire.write(0);
+    // No error message, look at whether the tasks are done
+    if (taskDone && docked == LOW){
+      Wire.write(2);
+    }
+    else if (taskDone && docked == HIGH){
+      Wire.write(1);
+    }
+    else {
+      Wire.write(0);
+    }
   }
 }
 
@@ -153,7 +166,6 @@ void executeCommand(){
       rotatePlate();
       break;
   }
-
 
 }
 
@@ -195,14 +207,26 @@ void homePlate(){
 void collectWaste(){
   int washDone = false;
   // Wait until the sensor is triggered the first time before we start counting.
+  // If it's not triggered within a certain time, it might be that the user forgot to add lysate,
+  // so we trigger an error flag
+  currentMillis = millis();
   while (wasteValue == HIGH){
     wasteValue = digitalRead(wasteSensor);
     delay(10);
+    if (millis() - currentMillis >= timeEmpty){
+      // Trigger error flag. Will be reset once the distributor asks the status
+      // of the REVOLVER
+      sendError = true;
+      // Reset timer
+      currentMillis = millis();
+    }
   }
+  // In case there was an error and it was resolved, reset error flag
+  sendError = false;
 
   // Handle the waste collection depending on the type of collector
   switch (collectorType){
-    // Version 1 of collector - exit criterion is that the colelctor remains empty
+    // Version 1 of collector - exit criterion is that the collector remains empty
     case 1:
       // Get current time
       currentMillis = millis();
@@ -275,10 +299,8 @@ void fillTubes(){
   while (tubeIdx <= nTubes){
     // Read level sensor
     sensorValue = digitalRead(tubeSensor);
-    // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
-    if ((sensorValue == LOW) && (millis() - currentMillis > 1000)){
-      // Reset timer
-      currentMillis = millis();
+    // The minimum time before triggering (to avoid spurious triggers)
+    if ((sensorValue == LOW) && (millis() - currentMillis > timeMin)){
       // Sensor triggered, rotate
       // Lift servo - small delay to give time for it to lift
       levelServo.write(90); // 90 degrees turn
@@ -288,14 +310,30 @@ void fillTubes(){
       if (tubeIdx <= nTubes){
         // Rotate stepper
         plateStepper.step(nSteps);
+        // Reset timer
+        currentMillis = millis();
+        // Move extra steps so the sensor goes in always
+        plateStepper.step(10);
         // Lower servo for next tube
         levelServo.write(0); // 90 degrees turn
         delay(500);
+        // Move back
+        plateStepper.step(-10);
       }
     }
+    else if ((sensorValue == HIGH) && (millis() - currentMillis > timeMaxTube)){
+      // Sensor not triggered and too long has passed. Throw error flag. Will be
+      // reset once the distributor asks the status of the REVOLVER
+      sendError = true;
+      // Reset timer
+      currentMillis = millis();
+    }
   }
-  delay(500);
+  // In case there was an error and it was resolved, reset error flag
+  sendError = false;
 
+  // Small delay before moving to zero position
+  delay(500);
   // Move to zero position
   // TO DO - maybe make this an option. If we want to add
   // buffer between collections, we need to NOT reset the plate
