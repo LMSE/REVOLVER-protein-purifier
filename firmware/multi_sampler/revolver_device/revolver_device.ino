@@ -206,6 +206,7 @@ void homePlate(){
 // Function for collecting waste after washes
 void collectWaste(){
   int washDone = false;
+  sendError = false;
   // Wait until the sensor is triggered the first time before we start counting.
   // If it's not triggered within a certain time, it might be that the user forgot to add lysate,
   // so we trigger an error flag
@@ -281,6 +282,7 @@ void collectWaste(){
 
 // Fill tubes (collect fractions)
 void fillTubes(){
+  sendError = false;
   // Lift servo and move to first tube
   levelServo.write(90);
   delay(500);

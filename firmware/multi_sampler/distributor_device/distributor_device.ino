@@ -31,16 +31,16 @@ char receivedChars[numChars];
 char tempChars[numChars];        // temporary array for use when parsing
 // variables to hold the parsed data
 char messageFromPC[numChars] = {0};
-int ledInstruction = 0;
+byte ledInstruction = 0;
 boolean newData = false;
 
 // Variables for I2C scanner and I2C communication
 byte error, address; // Variables for I2C scanner
-int nI2C; // number of connected devices via I2C
+byte nI2C; // number of connected devices via I2C
 const byte nI2CMax = 10; // Maximum number of I2C devices we will allow to be connected
 const byte nTaskMax = 20; // Maximum number of tasks to be stored - TODO: This could be tuned
 const byte nArgs = 3; // Maximum number of arguments to be used in functions
-byte listI2C[nI2CMax]; // array that holds the addresses of the I2C devices connected to the bus (first column) and their angular position (second)
+byte listI2C[nI2CMax]; // array that holds the addresses of the I2C devices connected to the bus
 int locationsI2C[nI2CMax]; // array that contains the angular locations (in n steps) of the connected I2C devices
 int angularPos = 0; // angular position of the motor when we start...arbitrary location
 byte taskIdx[nI2CMax]; // array for storing the task being currently executed by each revolver
@@ -128,8 +128,10 @@ void loop() {
         Serial.print("Error ocurred when collecting waste of filling tubes in REVOLVER #");
         Serial.println(listI2C[idx]);
         Serial.println("Maybe not enough buffer was added for the number of tubes to be filled or the pumps need to be checked");
+        // Set message to busy
+        messageFromRevolver = 0;
       }
-      
+
       // Check if all devices have finished all tasks (by checking if each device
       // has finished the last task and is currently free). We compare > nTask because
       // the following if statement increases the counter by one (i.e. the last task is
@@ -394,6 +396,7 @@ void locateI2C(){
 
   Serial.println("Finding locations of devices...");
   byte docked = 0; // not docked by default
+  byte foundCounter = 0; // local counter to see how many device we located
   angularPos = 0;
  // mainStepper.step(-steps2take/2);
   // Rotate the stepper a bit at a time and scan the I2C addresses to see if we docked a device
@@ -418,6 +421,8 @@ void locateI2C(){
 
         // Hall effect sensor triggered - store the initial position where the sensor was triggered
         locationsI2C[idx] = angularPos;
+        // Increased docked counter
+        foundCounter++;
         // Advance more until the sensor is reset, indicating we passed the docking position
         while (docked == 2){
           // Advance a bit
@@ -441,6 +446,14 @@ void locateI2C(){
       }
     }
   }
+
+  // Print message indicating how many devices we located as a summary
+  Serial.print("Located ");
+  Serial.print(foundCounter);
+  Serial.print(" devices out of ");
+  Serial.print(nI2C);
+  Serial.println(" total I2C devices connected");
+
 }
 
 // Send I2C command - aux function for keeping main code clean
