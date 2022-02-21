@@ -42,6 +42,8 @@ bool washDone; // Logical value indicating whether the wash solution has complet
 unsigned long timeOff = 0; // time that the waste collector is empty
 unsigned long currentMillis; // current time in milliseconds
 const unsigned long timeEmpty = 20000; // time in milliseconds the waste container must be empty before accepting wash is done
+const unsigned long timeMin = 5000; // Minimum time in milliseconds to spend in each microfuge tube
+const unsigned long timeMaxTube = 60000; // Maximum time in millseconds that we'll wait for each tube before showing a warning
 
 // Variables for parsing serial communication
 const byte numChars = 32; // this value could be smaller or larger, as long as it fits the largest expected message
@@ -292,7 +294,7 @@ void collectWaste(){
 
   // Handle the waste collection depending on the type of collector
   switch (collectorType){
-    // Version 1 of collector - exit criterion is that the colelctor remains empty
+    // Version 1 of collector - exit criterion is that the collector remains empty
     case 1:
       // Get current time
       currentMillis = millis();
@@ -302,12 +304,12 @@ void collectWaste(){
           // Reset timer: Sensor triggered, there is liquid in waste collector.
           currentMillis = millis();
           timeOff = 0;
-          Serial.println("Drops detected"); //Should we remove this prompt? it clutters the monitor
+          //Serial.println("Drops detected"); //Should we remove this prompt? it clutters the monitor
         }
         else{
           // Increase time counter: No liquid detected.
           timeOff = millis() - currentMillis;
-          Serial.println("Drops not detected");
+          //Serial.println("Drops not detected");
         }
         // Has the collector been empty for longer than the threshold time?
         //Return FALSE if timeOff does not exceed threshold seconds.
@@ -375,8 +377,8 @@ void fillTubes(){
     // Read level sensor
     sensorValue = digitalRead(tubeSensor);
 
-    // The minimum time before triggering (to avoid spurious triggers) is 5 seconds (TO DO - add as variable)
-    if ((sensorValue == LOW) && (millis() - currentMillis > 5000)){
+    // The minimum time before triggering (to avoid spurious triggers)
+    if ((sensorValue == LOW) && (millis() - currentMillis > timeMin)){
       // Sensor triggered, display stuff and rotate
       Serial.print("Done with tube #");
       Serial.print(tubeIdx);
@@ -400,6 +402,12 @@ void fillTubes(){
         // Move back
         plateStepper.step(-10);
       }
+    }
+    else if ((sensorValue == HIGH) && (millis() - currentMillis > timeMaxTube)){
+      // Sensor not triggered and too long has passed. Show warning
+      Serial.println("Tube not full yet! Maybe not enough buffer was added for the number of tubes to be filled or the pumps need to be checked");
+      // Reset timer
+      currentMillis = millis();
     }
   }
   Serial.print("Waiting for the last drops...");
