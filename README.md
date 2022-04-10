@@ -7,7 +7,7 @@
 
 This repository contains all the hardware and firmware files to build and operate REVOLVER: an automated protein purifier based on paralleled large-scale gravity-column workflows. We also present MULTIVOLVER, a multiplexed version of REVOLVER that allows for simultaneous purification of up to six samples at a time.
 
-REVOLVER was developed by Patrick Diep and Jose L. Cadavid at the University of Toronto. A full and detailed description of our system can be found in [this preprint](https://www.biorxiv.org/content/10.1101/2021.12.12.472287v1).
+REVOLVER was developed by Patrick Diep and Jose L. Cadavid at the University of Toronto. A full and detailed description of our system has been published in HardwareX and can be found [here](https://doi.org/10.1016/j.ohx.2022.e00291).
 
 ## Contents of repository
 
@@ -43,6 +43,6 @@ This folder contains the STL files for all the 3D-printed parts required for REV
 
 ## Building and using REVOLVER
 
-The instructions for setting up and using REVOLVER are given in more detail in our manuscript (link coming soon). REVOLVER is controlled via serial commands, so any computer with a working USB connector and an installation of the Arduino IDE is required.
+The instructions for setting up and using REVOLVER are given in more detail in our manuscript. REVOLVER is controlled via serial commands, so any computer with a working USB connector and an installation of the Arduino IDE is required.
 
-If you experience any issues when using our system, or otherwise have other suggestions, please create and issue and we are happy to help as soon as we can. Note that our manuscript includes a guide to troubleshooting common problems, so please check it out before posting.
+If you experience any issues when using our system, or otherwise have other suggestions, please create an issue and we are happy to help as soon as we can. Note that our manuscript includes a guide to troubleshooting common problems, so please check it out before posting.
